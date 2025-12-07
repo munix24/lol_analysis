@@ -1,0 +1,16 @@
+[
+    {
+        "leagueId": "5b511fdf-2044-4b26-934f-252057cbe8c9",
+        "queueType": "RANKED_SOLO_5x5",
+        "tier": "PLATINUM",
+        "rank": "III",
+        "puuid": "9lXyPwW6q8XkWMRiFLjiF1zsKc55n0jQhALf2CinSN_AB6JWT7eXvdwbJSVCUoeCJjc1UUJr3dsmZA",
+        "leaguePoints": 78,
+        "wins": 3,
+        "losses": 3,
+        "veteran": false,
+        "inactive": false,
+        "freshBlood": true,
+        "hotStreak": false
+    }
+]
