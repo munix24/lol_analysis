@@ -1,0 +1,23 @@
+use lol_analysis
+CREATE TABLE dbo.[Match] (
+    matchId VARCHAR(100) PRIMARY KEY,
+    dataVersion VARCHAR(20),
+    endOfGameResult VARCHAR(200),
+    gameCreationDateTime AS (DATEADD(MILLISECOND, gameCreation, '1970-01-01')),
+    gameEndDateTime AS (DATEADD(MILLISECOND, gameEndTimestamp, '1970-01-01')),
+    gameStartDateTime AS (DATEADD(MILLISECOND, gameStartTimestamp, '1970-01-01')),
+    gameDuration INT,
+    gameId BIGINT,
+    gameMode VARCHAR(50),
+    gameName VARCHAR(200),
+    gameType VARCHAR(50),
+    gameVersion VARCHAR(50),
+    mapId INT,
+    platformId VARCHAR(20),
+    queueId INT,
+    tournamentCode VARCHAR(200),
+    gameCreation BIGINT,
+    gameStartTimestamp BIGINT,
+    gameEndTimestamp BIGINT,
+    createdUtc DATETIME2(7) CONSTRAINT DF_Match_createdUtc DEFAULT (SYSUTCDATETIME())
+);

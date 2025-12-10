@@ -1,0 +1,16 @@
+services:
+  app:
+    image: munix244/lol_analysis_app:latest
+    build: .
+    container_name: lol_analysis_app
+    restart: unless-stopped
+    environment:
+      - sqlusr=${sqlusr}
+      - sqlpwd=${sqlpwd}
+      - sqlconnstr=${sqlconnstr}
+      - riotapikey=${riotapikey}
+    volumes:
+      - ./:/app
+    # If you need to attach to the running container for debugging:
+    # stdin_open: true
+    # tty: true
