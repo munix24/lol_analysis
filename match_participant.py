@@ -1,35 +1,47 @@
-import sql_conn
+import mongo_conn
 import pandas as pd
 import json
 
-def insert_participants_json_into_table_no_commit(matchID, participant_json, cursor):
+def insert_participants_json_into_table_no_commit(matchID, participant_json, bulk_operations=None):
+    """
+    MongoDB version: adds insert operations to bulk_operations list if provided,
+    or executes immediately if bulk_operations is None.
+    
+    Args:
+        matchID: The match ID
+        participant_json: List of participant data
+        bulk_operations: Optional list to collect bulk operations for batch execution
+    """
+    db = mongo_conn.get_db()
+    collection = db['MatchParticipant']
+    
     exclude_keys = {"perks", "challenges", "missions"}      # exclude nested dicts
     exclude_keys.add("bountyLevel")                         # random field not in all games?
 
-    # take cols from first participant
-    columns = [k for k in participant_json[0].keys() if k not in exclude_keys]  
-    column_names = ", ".join(columns)
-    placeholders = ", ".join(["?"] * (len(columns) + 1))    # +1 for matchID      
-
-    sql = f"INSERT INTO MatchParticipant (matchID, {column_names}) VALUES ({placeholders})"
-
+    documents = []
     for participant in participant_json:
-        values = [participant[col] for col in columns]
-        values.insert(0, matchID)                           # insert matchID at the beginning
-        cursor.execute(sql, values)
+        doc = {'matchId': matchID}
+        for key, value in participant.items():
+            if key not in exclude_keys:
+                doc[key] = value
+        documents.append(doc)
+    
+    if bulk_operations is not None:
+        # Add to bulk operations list for batch execution
+        from pymongo import InsertOne
+        for doc in documents:
+            bulk_operations.append(InsertOne(doc))
+    else:
+        # Execute immediately
+        if documents:
+            collection.insert_many(documents)
 
 if __name__ == "__main__":
     with open("data/match_example.json", "r") as f:
         example_json = json.load(f)   # this gives a list of dicts
 
-    conn = sql_conn.get_db_connection(False)  # don't autocommit
-    cursor = conn.cursor()
-
+    # MongoDB version: just call the function directly
+    # (no need for cursor/connection management as in SQL version)
     insert_participants_json_into_table_no_commit(
         example_json['metadata']['matchId'], 
-        example_json['info']['participants'], 
-        cursor)
-
-    # conn.commit()
-    cursor.close()
-    sql_conn.close_db_connection(conn)
+        example_json['info']['participants'])

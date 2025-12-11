@@ -1,8 +1,9 @@
 ## job has to be repeatable and idempotent
-import sql_conn
+import mongo_conn
 import league_v4
 import match
 import match_participant
+from pymongo import UpdateOne, InsertOne
 
 def is_matchID_after_threshold(matchID, region_prefix = "NA1_", threshold = 5_000_000_000) -> bool:
     try:
@@ -40,23 +41,34 @@ def lookup_and_process_matches_for_oldest_ranked_puuids(DEBUG=False):
                     match_json = match.get_match_API_json_by_matchID(matchID)
 
                     if match_json['info']['endOfGameResult'] == 'GameComplete':   # skip incomplete games
-                        conn = sql_conn.get_db_connection(False)        # don't autocommit
-                        cursor = conn.cursor()
+                        # MongoDB: Use bulk operations for better performance
+                        bulk_operations = []
 
                         # df_puuids.to_sql('lol_analysis.dbo.TempOldestRankedPuuids', sql_conn.get_db_connection(), if_exists='replace', index=False)
-                        match_participant.insert_participants_json_into_table_no_commit(matchID, match_json['info']['participants'], cursor)
+                        match_participant.insert_participants_json_into_table_no_commit(matchID, match_json['info']['participants'], bulk_operations)
 
                         for participant in match_json['info']['participants']:
                             if participant['puuid'] != puuid:                      # don't update initial participant leagueV4 yet
                                 leagues_v4_json = league_v4.get_league_v4_API_json_by_puuid(participant['puuid'])
                                 for league_v4_json in leagues_v4_json:               # ranked / flex queues
-                                    league_v4.merge_into_league_v4_table_no_commit(league_v4_json, cursor)
+                                    league_v4.merge_into_league_v4_table_no_commit(league_v4_json, bulk_operations)
                 
-                        match.insert_match_json_into_table_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], cursor)
+                        match.insert_match_json_into_table_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], bulk_operations)
 
-                        conn.commit()
-                        cursor.close()
-                        sql_conn.close_db_connection(conn)
+                        # Execute all bulk operations at once
+                        if bulk_operations:
+                            db = mongo_conn.get_db()
+                            # Group operations by collection type
+                            league_ops = [op for op in bulk_operations if isinstance(op, UpdateOne)]
+                            participant_ops = [op for op in bulk_operations if isinstance(op, InsertOne) and 'puuid' in op._doc]
+                            match_ops = [op for op in bulk_operations if isinstance(op, InsertOne) and 'matchId' in op._doc and 'puuid' not in op._doc]
+                            
+                            if league_ops:
+                                db['LeagueV4'].bulk_write(league_ops, ordered=False)
+                            if participant_ops:
+                                db['MatchParticipant'].bulk_write(participant_ops, ordered=False)
+                            if match_ops:
+                                db['Match'].bulk_write(match_ops, ordered=False)
 
                 league_v4.get_league_v4_API_and_merge_into_table_by_puuid(puuid)
     except KeyboardInterrupt:
