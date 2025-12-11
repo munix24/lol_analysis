@@ -1,8 +1,9 @@
 There are 3 REST API endpoints that generate the json data you see in the data folder. What is your recomendation to create a database/repository with this data for millions of other users and matches.
 
+**NOTE: This application has been migrated from SQL Server to MongoDB. See MONGODB_MIGRATION.md for details on configuration and migration.**
 
-tables:
-# summoner#, league_v4, match, match_participant
+Collections (formerly tables):
+# summoner#, LeagueV4, Match, MatchParticipant
 
 
 # only have 1 job for simplicity and to track # of requests

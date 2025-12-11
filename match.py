@@ -1,4 +1,4 @@
-import sql_conn
+import mongo_conn
 import pandas as pd
 import sys
 import json
@@ -29,51 +29,63 @@ def select_matches_in_list_not_in_table(matchIDs_list):
     if not matchIDs_list:
         return []
 
-    conn = sql_conn.get_db_connection()
-    cursor = conn.cursor()
-
-    # '?' parameter placeholders for the IN clause in query
-    placeholders = ','.join('?' for _ in matchIDs_list)
-    query = f"SELECT matchId FROM lol_analysis.dbo.Match WHERE matchId IN ({placeholders})"
-    cursor.execute(query, matchIDs_list)
+    db = mongo_conn.get_db()
+    collection = db['Match']
     
-    matchIDs_existing = {row[0] for row in cursor.fetchall()}
-
-    conn.close()
-
+    # Query MongoDB for matchIds that exist in the database
+    cursor = collection.find(
+        {'matchId': {'$in': matchIDs_list}},
+        {'matchId': 1, '_id': 0}
+    )
+    
+    matchIDs_existing = {doc['matchId'] for doc in cursor}
+    
     # keep only new match IDs
     matchIDs_list_new = [m for m in matchIDs_list if m not in matchIDs_existing]
     return matchIDs_list_new
 
-def insert_match_json_into_table_no_commit(matchID, dataVersion, match_info_json, cursor):
+def insert_match_json_into_table_no_commit(matchID, dataVersion, match_info_json, bulk_operations=None):
+    """
+    MongoDB version: adds insert operation to bulk_operations list if provided,
+    or executes immediately if bulk_operations is None.
+    
+    Args:
+        matchID: The match ID
+        dataVersion: The data version
+        match_info_json: The match info data
+        bulk_operations: Optional list to collect bulk operations for batch execution
+    """
+    db = mongo_conn.get_db()
+    collection = db['Match']
+    
     exclude_keys = {"participants", "teams"}    # exclude nested dicts
     exclude_keys.add("gameModeMutators")        # field only in ARAM
 
-    # keys should map exactly to table columns
-    columns = [k for k in match_info_json.keys() if k not in exclude_keys]  
-    column_names = ", ".join(columns)
-    placeholders = ", ".join(["?"] * (len(columns) + 2))    # +2 for matchID and dataVersion
-
-    sql = f"INSERT INTO Match (matchID, dataVersion, {column_names}) VALUES ({placeholders})"
-
-    values = [match_info_json[col] for col in columns]
-    values.insert(0, matchID)                           # insert matchID at the beginning
-    values.insert(1, dataVersion)                       # insert dataVersion 
-    cursor.execute(sql, values)
+    # Build document from match_info_json, excluding nested structures
+    doc = {
+        'matchId': matchID,
+        'dataVersion': dataVersion
+    }
+    
+    for key, value in match_info_json.items():
+        if key not in exclude_keys:
+            doc[key] = value
+    
+    if bulk_operations is not None:
+        # Add to bulk operations list for batch execution
+        from pymongo import InsertOne
+        bulk_operations.append(InsertOne(doc))
+    else:
+        # Execute immediately
+        collection.insert_one(doc)
 
 if __name__ == "__main__":
     with open("data/match_example.json", "r") as f:
         example_json = json.load(f)   # this gives a list of dicts
 
-    conn = sql_conn.get_db_connection(False)  # don't autocommit
-    cursor = conn.cursor()
-
+    # MongoDB version: just call the function directly
+    # (no need for cursor/connection management as in SQL version)
     insert_match_json_into_table_no_commit(
         example_json['metadata']['matchId'], 
         example_json['metadata']['dataVersion'], 
-        example_json['info'], 
-        cursor)
-
-    conn.commit()
-    cursor.close()
-    sql_conn.close_db_connection(conn)
+        example_json['info'])
