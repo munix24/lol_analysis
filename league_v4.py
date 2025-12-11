@@ -79,6 +79,11 @@ def merge_into_league_v4_table_no_commit(league_v4_json, bulk_operations=None):
     MongoDB version: adds upsert operation to bulk_operations list if provided,
     or executes immediately if bulk_operations is None.
     
+    Note: This function updates only updateRankUtc, NOT updateMatchesUtc.
+    The updateMatchesUtc field is updated only for the primary puuid being processed
+    (via merge_into_league_v4_table) after all its matches are processed.
+    For other participants found within matches, we only update their rank data.
+    
     Args:
         league_v4_json: The league v4 data to upsert
         bulk_operations: Optional list to collect bulk operations for batch execution

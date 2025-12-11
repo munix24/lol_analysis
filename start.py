@@ -56,14 +56,24 @@ def lookup_and_process_matches_for_oldest_ranked_puuids(DEBUG=False):
                 
                         match.insert_match_json_into_table_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], match_ops)
 
-                        # Execute all bulk operations at once
-                        db = mongo_conn.get_db()
-                        if league_ops:
-                            db['LeagueV4'].bulk_write(league_ops, ordered=False)
-                        if participant_ops:
-                            db['MatchParticipant'].bulk_write(participant_ops, ordered=False)
-                        if match_ops:
-                            db['Match'].bulk_write(match_ops, ordered=False)
+                        # Execute all bulk operations at once with error handling
+                        try:
+                            db = mongo_conn.get_db()
+                            if league_ops:
+                                result = db['LeagueV4'].bulk_write(league_ops, ordered=False)
+                                if DEBUG:
+                                    print(f"LeagueV4 bulk: {result.upserted_count} upserted, {result.modified_count} modified")
+                            if participant_ops:
+                                result = db['MatchParticipant'].bulk_write(participant_ops, ordered=False)
+                                if DEBUG:
+                                    print(f"MatchParticipant bulk: {result.inserted_count} inserted")
+                            if match_ops:
+                                result = db['Match'].bulk_write(match_ops, ordered=False)
+                                if DEBUG:
+                                    print(f"Match bulk: {result.inserted_count} inserted")
+                        except Exception as bulk_error:
+                            print(f"Error during bulk write operations for matchID {matchID}: {bulk_error}")
+                            raise
 
                 league_v4.get_league_v4_API_and_merge_into_table_by_puuid(puuid)
     except KeyboardInterrupt:
