@@ -1,5 +1,11 @@
 There are 3 REST API endpoints that generate the json data you see in the data folder. What is your recomendation to create a database/repository with this data for millions of other users and matches.
 
+REQUIRED environment variables:
+riotapikey: key used when making API reqs to riot
+sqlconnstr: database connection string. If it begins with "server" will default to sql server, if "mongo" will use mongoDB
+sqlusr: user to login to database
+sqlpwd: password to login to database
+
 
 tables:
 # summoner#, league_v4, match, match_participant
@@ -34,14 +40,14 @@ for puuid in puuids:
 			if participant_puuid != puuid:									# don't update initial participant yet
 				get league_v4 API
 				for league in leagues:
-					update league_v4 and date	## this API will allways have the most up to date data
+					update league_v4 					## update everything EXCEPT [updateMatchesUtc]
 				
 		add match in match table (matchId, data version, gameCreation, gameDuration, gameEndTimestamp, gameId, gameMode, gameName, gameStartTimestamp, gameType, gameVersion, mapId, participants?)
 
 	
 ## only update once all the puuid's matches have been inserted
 get league_v4 API for puuid
-update league_v4 with rank, wins, update_date		## this API will allways have the most up to date data
+update league_v4 										
 
 
 

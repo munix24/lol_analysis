@@ -1,4 +1,3 @@
-use lol_analysis
 -- Created by GitHub Copilot in SSMS - review carefully before executing
 CREATE TABLE dbo.MatchParticipant (
     matchId VARCHAR(100),

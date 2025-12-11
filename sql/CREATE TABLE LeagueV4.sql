@@ -1,4 +1,3 @@
--- use lol_analysis
 -- Created by GitHub Copilot in SSMS - review carefully before executing
 CREATE TABLE LeagueV4 (
     puuid         VARCHAR(100)     NOT NULL,

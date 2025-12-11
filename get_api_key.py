@@ -1,4 +1,4 @@
-from env_util import get_env_var
+from get_env_var import get_env_var
 
 def get_api_key():
     """Return Riot API key from environment.

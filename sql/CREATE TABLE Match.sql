@@ -1,4 +1,3 @@
-use lol_analysis
 CREATE TABLE dbo.[Match] (
     matchId VARCHAR(100) PRIMARY KEY,
     dataVersion VARCHAR(20),
