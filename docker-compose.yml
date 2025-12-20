@@ -5,9 +5,10 @@ services:
     container_name: lol_analysis_app
     restart: unless-stopped
     environment:
-      - sqlusr=${sqlusr}
-      - sqlpwd=${sqlpwd}
-      - sqlconnstr=${sqlconnstr}
+      - dbserverandport=${dbserverandport}
+      - dbdatabase=${dbdatabase}
+      - dbusr=${dbusr}
+      - dbpwd=${dbpwd}
       - riotapikey=${riotapikey}
     volumes:
       - ./:/app

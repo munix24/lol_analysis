@@ -3,28 +3,32 @@ import pandas as pd
 from get_env_var import get_env_var
 from typing import Any, Dict, List, Tuple
 
+
 class SqlDBClient:
+	def __init__(self, db_usr: str = None, db_pwd: str = None, db_server_and_port: str = None, db_database: str = None):
+		# Allow passing credentials/connstr in from caller; fall back to env vars
+		self.db_usr = db_usr
+		self.db_pwd = db_pwd
+		self.db_server_and_port = db_server_and_port
+		self.db_database = db_database
+
 	def get_db_connection(self, autocommit_b=True):
 		"""
 		Establishes and returns a database connection.
 		"""
+		conn_str = "Driver={ODBC Driver 18 for SQL Server}; \
+			Server=tcp:" + self.db_server_and_port + "; \
+			Database=" + self.db_database + "; \
+			Uid=" + self.db_usr + "; \
+			Pwd=" + self.db_pwd + "; \
+			Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+
 		try:
-			sql_usr = get_env_var("sqlusr", required=True)
-			sql_pwd = get_env_var("sqlpwd", required=True)
-			sql_conn_str = get_env_var("sqlconnstr", required=True)
-
-			conn_str = "Driver={ODBC Driver 18 for SQL Server};" + sql_conn_str + " \
-				Uid=" + sql_usr + ";Pwd=" + sql_pwd + "; \
-				Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
-
 			conn = pyodbc.connect(conn_str, autocommit=autocommit_b)
 			return conn
 		except pyodbc.Error as ex:
 			sqlstate = ex.args[0] if ex.args else str(ex)
 			print(f"Database connection error: {sqlstate}")
-			raise
-		except KeyError as e:
-			print("Environment variable for database connection is missing: " + str(e))
 			raise
 		except Exception as e:
 			print("Error connecting to database: " + str(e))
@@ -37,31 +41,6 @@ class SqlDBClient:
 		if conn:
 			conn.close()
 			
-	def get_oldest_ranked_puuids_df(self) -> pd.DataFrame:
-		conn = self.get_db_connection()
-		sql_query = "SELECT puuid FROM dbo.LeagueV4 \
-			where queueType = 'RANKED_SOLO_5x5' \
-			order by updateMatchesUtc asc, totalGames desc"
-		df = pd.read_sql(sql_query, conn)
-		self.close_db_connection(conn)
-		return df
-
-	def merge_league_v4(self, puuid, leagues_v4_json: List[Dict[str, Any]]):
-		conn = self.get_db_connection(False)
-		cursor = conn.cursor()
-
-		for league_v4_json in leagues_v4_json:
-			# use internal no-commit helper
-			self.merge_league_v4_no_commit(league_v4_json, (conn, cursor))
-			# update the last-matches timestamp for this puuid as part of the same txn
-
-		# call the timestamp updater once per call (keeps original logic)
-		self.update_matches_utc_no_commit(puuid, (conn, cursor))
-
-		conn.commit()
-		cursor.close()
-		self.close_db_connection(conn)
-
 	def begin_transaction(self) -> Tuple[Any, Any]:
 		conn = self.get_db_connection(False)
 		return conn, conn.cursor()
@@ -77,6 +56,15 @@ class SqlDBClient:
 		except Exception:
 			pass
 		self.close_db_connection(conn)
+
+	def select_oldest_ranked_puuids_df(self) -> pd.DataFrame:
+		conn = self.get_db_connection()
+		sql_query = "SELECT puuid FROM dbo.LeagueV4 \
+			where queueType = 'RANKED_SOLO_5x5' \
+			order by updateMatchesUtc asc, totalGames desc"
+		df = pd.read_sql(sql_query, conn)
+		self.close_db_connection(conn)
+		return df
 
 	def select_matches_in_list_not_in_table(self, matchIDs_list: List[str]) -> List[str]:
 		if not matchIDs_list:
@@ -120,7 +108,7 @@ class SqlDBClient:
 			values.insert(0, matchID)
 			cursor.execute(sql, values)
 
-	def merge_league_v4_no_commit(self, league_v4_json: Dict[str, Any], txn: Tuple[Any, Any]):
+	def merge_league_v4_no_commit(self, leagues_v4_json: Dict[str, Any], txn: Tuple[Any, Any]):
 		"""Execute the MERGE for a single league_v4 JSON using provided (conn, cursor) txn without committing."""
 		conn, cursor = txn
 		sql = """
@@ -157,20 +145,37 @@ class SqlDBClient:
 			src.veteran, src.inactive, src.freshBlood, src.hotStreak
 		);
 		"""
-		cursor.execute(sql, (
-			league_v4_json["leagueId"],
-			league_v4_json["queueType"],
-			league_v4_json["tier"],
-			league_v4_json["rank"],
-			league_v4_json["puuid"],
-			league_v4_json["leaguePoints"],
-			league_v4_json["wins"],
-			league_v4_json["losses"],
-			league_v4_json["veteran"],
-			league_v4_json["inactive"],
-			league_v4_json["freshBlood"],
-			league_v4_json["hotStreak"]
+		for league_v4_json in leagues_v4_json:
+			cursor.execute(sql, (
+				league_v4_json["leagueId"],
+				league_v4_json["queueType"],
+				league_v4_json["tier"],
+				league_v4_json["rank"],
+				league_v4_json["puuid"],
+				league_v4_json["leaguePoints"],
+				league_v4_json["wins"],
+				league_v4_json["losses"],
+				league_v4_json["veteran"],
+				league_v4_json["inactive"],
+				league_v4_json["freshBlood"],
+				league_v4_json["hotStreak"]
 		))
+
+	def merge_league_v4(self, puuid, leagues_v4_json: List[Dict[str, Any]]):
+		conn = self.get_db_connection(False)
+		cursor = conn.cursor()
+
+		for league_v4_json in leagues_v4_json:
+			# use internal no-commit helper
+			self.merge_league_v4_no_commit(league_v4_json, (conn, cursor))
+			# update the last-matches timestamp for this puuid as part of the same txn
+
+		# call the timestamp updater once per call (keeps original logic)
+		self.update_matches_utc_no_commit(puuid, (conn, cursor))
+
+		conn.commit()
+		cursor.close()
+		self.close_db_connection(conn)
 
 	def update_matches_utc_no_commit(self, puuid: str, txn: Tuple[Any, Any]):
 		"""Update the [updateMatchesUtc] timestamp for the given puuid using the provided (conn, cursor) txn."""

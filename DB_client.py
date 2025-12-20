@@ -7,13 +7,22 @@ def get_client():
     # - If it starts with "Server", use SQL Server
     # - If it equals or starts with "mongo", use MongoDB
     # If `sqlconnstr` is missing or doesn't exist raise error
-    sql_connstr = get_env_var('sqlconnstr', required=True)
-    val = sql_connstr.strip()
-    low = val.lower()
-    if val.startswith('Server') or low.startswith('server'):
-        return SqlDBClient()
-    if low == 'mongo' or low.startswith('mongo'):
-        return MongoDBClient()
+    try:
+        db_server_and_port = get_env_var('dbserverandport', required=True)
+        db_database = get_env_var('dbdatabase', required=False)
+        db_usr = get_env_var('dbusr', required=False)
+        db_pwd = get_env_var('dbpwd', required=False)
+    except KeyError as e:
+        print("Environment variable for database connection is missing: " + str(e))
+        raise
+    except Exception as e:
+        print("Error getting DB environment variables: " + str(e))
+        raise
+
+    if 'server' in db_server_and_port.strip().lower():
+        return SqlDBClient(db_usr, db_pwd, db_server_and_port, db_database)
+    if 'mongo' in db_server_and_port.strip().lower():
+        return MongoDBClient(db_usr, db_pwd, db_server_and_port, db_database)
 
 # Create a module-level `db` instance so callers can import `db` directly
 # Example: `from DB_client import db`

@@ -33,7 +33,7 @@ for puuid in puuids:
 		get match API
 		
 		# if match_json['info']['gameDuration'] < 200
-		# if 420 or 480 queue type?:						## only include ranked / swiftplay in case the cols are different?
+		# if 420 (ranked) or 480 (swiftplay) queue type? (400 = unranked draft?)			## only include ranked / swiftplay in case the cols are different?
 					
 		## only commit once, for all match and participant data
 		for participant in participants:
@@ -72,11 +72,18 @@ WITH COMPOSE FILE
 	run	(-d: don't log to output)
 		docker compose up -d app
 
-	build and restart	(-d: don't log to output)
+	(to update docker env var have to restart vscode)
+	build and run	(-d: don't log to output)
 		docker compose up -d --build app
+
+	down
+		docker compose down -v
 
 	tail logs	(last 100 lines)
 		docker compose logs -f --tail 100 app
 
 	push to docker.io
 		docker compose push app
+
+	build and push
+		docker login && docker compose build app && docker compose push app

@@ -2,7 +2,7 @@
 import API_league_v4
 import API_matches
 import API_match
-import DB_client        
+import DB_client
 
 def is_matchID_after_threshold(matchID, region_prefix = "NA1_", threshold = 5_000_000_000) -> bool:
     try:
@@ -13,11 +13,11 @@ def is_matchID_after_threshold(matchID, region_prefix = "NA1_", threshold = 5_00
 def lookup_and_process_matches_for_oldest_ranked_puuids(DEBUG=False):
     try:
         while True:
-            df_puuids = DB_client.db.get_oldest_ranked_puuids_df()
+            df_puuids = DB_client.db.select_oldest_ranked_puuids_df()
             for puuid in df_puuids['puuid']:
                 if DEBUG:
                     print(puuid)
-                matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid)                          # even if null continue to update puuid
+                matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid)                      # even if null continue to update puuid
                 if DEBUG:
                     print('total matchIDs for puuid:', len(matchIDs_list))
 
@@ -25,7 +25,7 @@ def lookup_and_process_matches_for_oldest_ranked_puuids(DEBUG=False):
                 if DEBUG:
                     print('total matchIDs above threshold:', len(matchIDs_list))
 
-                matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)            # even if null continue to update puuid
+                matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       # even if null continue to update puuid
                 if DEBUG:
                     print('new matchIDs to process:', len(matchIDs_list))
 
@@ -36,15 +36,17 @@ def lookup_and_process_matches_for_oldest_ranked_puuids(DEBUG=False):
                     match_json = API_match.get_match_API_json_by_matchID(matchID)
 
                     if match_json['info']['endOfGameResult'] == 'GameComplete':   # skip incomplete games
-                        txn = DB_client.db.begin_transaction()
                         try:
-                            DB_client.db.insert_participants_no_commit(matchID, match_json['info']['participants'], txn)
+                            txn = DB_client.db.begin_transaction()
+
+                            # Only insert participants in SQL. MongoDB participants are part of match document
+                            if DB_client.db.__class__.__name__ == 'SqlDBClient':
+                                DB_client.db.insert_participants_no_commit(matchID, match_json['info']['participants'], txn)
 
                             for participant in match_json['info']['participants']:
-                                if participant['puuid'] != puuid:                      # don't update initial participant leagueV4 yet
+                                if participant['puuid'] != puuid and participant['puuid'] != 'BOT':                      # don't update initial participant leagueV4 yet
                                     leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(participant['puuid'])
-                                    for league_v4_json in leagues_v4_json:
-                                        DB_client.db.merge_league_v4_no_commit(league_v4_json, txn)
+                                    DB_client.db.merge_league_v4_no_commit(leagues_v4_json, txn)
 
                             DB_client.db.insert_match_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], txn)
                             DB_client.db.commit_transaction(txn)
