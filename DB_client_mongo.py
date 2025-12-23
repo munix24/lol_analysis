@@ -82,7 +82,9 @@ class MongoDBClient:
 
     def select_oldest_ranked_puuids_df(self) -> pd.DataFrame:
         coll = self.db['LeagueV4']
-        cursor = coll.find({'queueType': 'RANKED_SOLO_5x5'}, {'puuid': 1, '_id': 0}).sort([('updateMatchesUtc', 1), ('totalGames', -1)])
+        cursor = coll.find(
+                    {'queueType': 'RANKED_SOLO_5x5'}, 
+                    {'puuid': 1, '_id': 0}).sort([('updateMatchesUtc', 1), ('totalGames', -1)]).limit(100)
         docs = list(cursor)
         df = pd.DataFrame(docs)
         return df

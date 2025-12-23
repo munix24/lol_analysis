@@ -41,11 +41,7 @@ def lookup_and_process_matches_for_oldest_ranked_puuids(DEBUG=False):
                         if match_json['info']['queueId'] == 420:   # only solo ranked 
                             try:
                                 txn = DB_client.db.begin_transaction()
-
-                                # Only insert participants in SQL. MongoDB participants are part of match document
-                                if DB_client.db.__class__.__name__ == 'SqlDBClient':
-                                    DB_client.db.insert_participants_no_commit(matchID, match_json['info']['participants'], txn)
-
+                                
                                 for participant in match_json['info']['participants']:  # shouldn't be null after gamecomplete
                                     if participant['puuid'] != puuid and participant['puuid'] != 'BOT':                      # don't update initial participant leagueV4 yet
                                         leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(participant['puuid'])

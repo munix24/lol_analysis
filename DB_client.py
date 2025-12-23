@@ -1,6 +1,5 @@
 from get_env_var import get_env_var
 from DB_client_mongo import MongoDBClient
-from DB_client_sql import SqlDBClient
 
 def get_client():
     # Decide backend based on `sqlconnstr` content:
@@ -18,9 +17,6 @@ def get_client():
     except Exception as e:
         print("Error getting DB environment variables: " + str(e))
         raise
-
-    if 'server' in db_server_and_port.strip().lower():
-        return SqlDBClient(db_usr, db_pwd, db_server_and_port, db_database)
     if 'mongo' in db_server_and_port.strip().lower():
         return MongoDBClient(db_usr, db_pwd, db_server_and_port, db_database)
 
