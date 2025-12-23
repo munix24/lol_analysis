@@ -1,6 +1,6 @@
 from get_env_var import get_env_var
-from DB_client_sql import SqlDBClient
 from DB_client_mongo import MongoDBClient
+from DB_client_sql import SqlDBClient
 
 def get_client():
     # Decide backend based on `sqlconnstr` content:
