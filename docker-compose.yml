@@ -5,11 +5,11 @@ services:
     container_name: lol_analysis_app
     restart: unless-stopped
     environment:
-      - dbserverandport=${dbserverandport}
-      - dbdatabase=${dbdatabase}
-      - dbusr=${dbusr}
-      - dbpwd=${dbpwd}
-      - riotapikey=${riotapikey}
+      - dbserverandport=
+      - dbdatabase=
+      - dbusr=
+      - dbpwd=
+      - riotapikey=RGAPI-08cc3e12-9798-49f9-933c-b3c4178adf73
     volumes:
       - ./:/app
     # If you need to attach to the running container for debugging:
