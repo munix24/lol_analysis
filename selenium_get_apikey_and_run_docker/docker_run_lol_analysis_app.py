@@ -28,11 +28,10 @@ DEFAULT_NAME = "lol_analysis_app"
 DEFAULT_RESTART_ON_FAILURE = 3
 
 def read_apikey_from_file(scriptdir: Path) -> str | None:
-    p = scriptdir / "apikey.txt"
-    if not p.exists():
+    if not scriptdir.exists():
         return None
     try:
-        for line in p.read_text(encoding="utf-8").splitlines():
+        for line in scriptdir.read_text(encoding="utf-8").splitlines():
             s = line.strip()
             if s:
                 return s
@@ -92,11 +91,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", help="Container name", default=DEFAULT_NAME)
     args = p.parse_args(argv)
 
-    scriptdir = Path(__file__).resolve().parent
-
-    apikey = args.apikey
-    if not apikey:
-        apikey = read_apikey_from_file(scriptdir)
+    inpath = Path("apikey.txt")
+    apikey = args.apikey if args.apikey else read_apikey_from_file(inpath)
 
     if not apikey:
         print("ERROR: Riot API key not provided.")
@@ -123,8 +119,5 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     rc = main()
-    try:
-        input("Press Enter to exit...")
-    except Exception:
-        pass
+    input("Press Enter to exit...")
     sys.exit(rc)

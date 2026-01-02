@@ -139,8 +139,5 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     rc = main()
     print(f"Finished with exit code {rc}")
-    try:
-        input("Press Enter to exit...")
-    except EOFError:
-        pass
+    input("Press Enter to exit...")
     raise SystemExit(rc)

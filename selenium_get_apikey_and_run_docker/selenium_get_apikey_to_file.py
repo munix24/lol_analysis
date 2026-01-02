@@ -256,9 +256,6 @@ def main(argv: list[str] | None = None):
 # should work with all default parameters
 if __name__ == '__main__':
 	rc = main()
-	try:
-		input("Press Enter to exit...")
-	except Exception:
-		pass
+	input("Press Enter to exit...")
 	sys.exit(rc)
 
