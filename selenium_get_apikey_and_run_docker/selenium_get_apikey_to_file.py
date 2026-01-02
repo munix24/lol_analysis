@@ -233,7 +233,7 @@ def run(outputFileName: Path | str = DEFAULT_OUTPUT_FILE, timeout: int = DEFAULT
 		try:
 			Path(outputFileName).write_text(foundApiKey, encoding="utf-8")
 		except (OSError, PermissionError) as e:
-			print(f"Failed to write API key to {Path(outputFileName)}: {e}")
+			print(f"Failed to write API key to {outputFileName}: {e}")
 			return 5
 		
 		print(f"Wrote API key to {outputFileName}")
