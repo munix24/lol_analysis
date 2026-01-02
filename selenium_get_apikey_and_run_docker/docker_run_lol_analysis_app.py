@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", help="Container name", default=DEFAULT_NAME)
     args = p.parse_args(argv)
 
-    inpath = Path("apikey.txt")
+    inpath = (Path(__file__).resolve().parent / Path("apikey.txt")) if not Path("apikey.txt").is_absolute() else Path("apikey.txt")
     apikey = args.apikey if args.apikey else read_apikey_from_file(inpath)
 
     if not apikey:
