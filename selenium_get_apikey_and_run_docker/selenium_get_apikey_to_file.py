@@ -231,9 +231,11 @@ def run(outputFileName: Path | str = DEFAULT_OUTPUT_FILE, timeout: int = DEFAULT
 
 		print("Found API key:", foundApiKey)
 		try:
-			Path(outputFileName).write_text(foundApiKey, encoding="utf-8")
+			outp = (Path(__file__).resolve().parent / Path(outputFileName)) if not Path(outputFileName).is_absolute() else Path(outputFileName)
+			outp.write_text(foundApiKey, encoding="utf-8")
+			# Path(outputFileName).write_text(foundApiKey, encoding="utf-8")
 		except (OSError, PermissionError) as e:
-			print(f"Failed to write API key to {outputFileName}: {e}")
+			print(f"Failed to write API key to {outp}: {e}")
 			return 5
 		
 		print(f"Wrote API key to {outputFileName}")
