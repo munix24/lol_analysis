@@ -251,9 +251,14 @@ def main(argv: list[str] | None = None):
 	# test profile path
 	# profile = Path(args.profile_path) if args.profile_path else r"C:\Users\jzsmi\OneDrive\Desktop\osbpl924.default"
 	rc = run(args.outputFileName, args.timeout, args.poll_interval, args.profile_path, cookies_only=args.cookies_only)
-	sys.exit(rc)
+	return rc
 
 # should work with all default parameters
 if __name__ == '__main__':
-	main()
+	rc = main()
+	try:
+		input("Press Enter to exit...")
+	except Exception:
+		pass
+	sys.exit(rc)
 

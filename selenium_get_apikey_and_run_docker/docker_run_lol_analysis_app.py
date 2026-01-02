@@ -122,4 +122,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    rc = main()
+    try:
+        input("Press Enter to exit...")
+    except Exception:
+        pass
+    sys.exit(rc)

@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 try:
-    import docker_get_apikey_selenium_to_file as selenium_getter
+    import selenium_get_apikey_to_file as selenium_getter
 except Exception:
     selenium_getter = None
 
