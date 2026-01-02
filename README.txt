@@ -36,6 +36,6 @@ localhost mongodb with user / pwd + volume
 
 docker service update --env-add riotapikey="RGAPI-08cc3e12-9798-49f9-933c-b3c4178adf73" lol_analysis_app
 
-docker run -d --restart=on-failure:3 --name lol_analysis_app -e riotapikey="%apikey%" munix244/lol_analysis_app
+docker run -d --restart=on-failure:3 --name lol_analysis_app -e riotapikey="%riotapikey%" munix244/lol_analysis_app
 docker run -d --restart=on-failure:3 --name lol_analysis_app --env-file ./lol_analysis/env_mongo_db.env munix244/lol_analysis_app
 

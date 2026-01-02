@@ -26,7 +26,6 @@ WITH COMPOSE FILE
 	build and run	(-d: background)
 		docker compose up -d --build app
 
-
 	down (stops and removes the Compose-created containers and networks)
 		docker compose down -v
 

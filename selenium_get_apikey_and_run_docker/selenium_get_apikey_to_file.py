@@ -25,12 +25,15 @@ import sys
 import time
 import tempfile
 import shutil
+import sqlite3
 from pathlib import Path
 
 try:
 	from selenium import webdriver
 	from selenium.webdriver.common.by import By
 	from selenium.webdriver.firefox.options import Options
+	from selenium.webdriver.support.ui import WebDriverWait
+	from selenium.common.exceptions import TimeoutException
 except Exception:
 	webdriver = None
 
@@ -39,6 +42,7 @@ DEFAULT_OUTPUT_FILE = "apikey.txt"
 DEFAULT_TIMEOUT = 30
 DEFAULT_POLL_INTERVAL = 2.0
 DEFAULT_PROFILE_PATH = r"C:\Users\jzsmi\AppData\Roaming\Mozilla\Firefox\Profiles\7mswh3nh.default-release"
+DEFAULT_COOKIES_ONLY = True
 
 def ensure_selenium_available():
 	if webdriver is None:
@@ -63,11 +67,83 @@ def find_key_in_text(text: str) -> str | None:
 	# 	return m2.group(0)
 	return None
 
+def _read_firefox_cookies(profile_path: Path, domain_suffixes: tuple[str, ...]) -> list[dict]:
+	"""Read cookies from a Firefox profile's cookies.sqlite, filtering by domain suffixes.
+
+	Returns a list of cookie dicts with keys compatible with Selenium's add_cookie.
+	Copies the sqlite DB to a temp file to avoid read locks when Firefox is running.
+	"""
+	cookies = []
+	db_path = profile_path / "cookies.sqlite"
+	if not db_path.exists():
+		print(f"Firefox cookies DB not found at {db_path}")
+		return cookies
+
+	tmp_dir = Path(tempfile.mkdtemp(prefix="ff-cookies-"))
+	tmp_db = tmp_dir / "cookies.sqlite"
+	try:
+		shutil.copy2(db_path, tmp_db)
+		conn = sqlite3.connect(tmp_db)
+		try:
+			cur = conn.cursor()
+			# Schema: moz_cookies(name, value, host, path, expiry, lastAccessed, creationTime,
+			# isSecure, isHttpOnly, inBrowserElement, sameSite, rawSameSite, schemeMap, ...)
+			cur.execute(
+				"SELECT name, value, host, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies"
+			)
+			for name, value, host, path, expiry, is_secure, is_http_only, same_site in cur.fetchall():
+				host = host or ""
+				# Keep cookies whose host ends with one of the target suffixes
+				if any(host.endswith(suf) or host.endswith("." + suf) or host == suf for suf in domain_suffixes):
+					c = {
+						"name": name,
+						"value": value,
+						"domain": host,
+						"path": path or "/",
+						"secure": bool(is_secure or 0),
+					}
+					# Expiry can be None/0 for session cookies; Selenium expects int seconds if provided
+					if expiry and int(expiry) > 0:
+						c["expiry"] = int(expiry)
+					# Optional attributes; Selenium may accept httpOnly/sameSite but they are not required
+					# c["httpOnly"] = bool(is_http_only or 0)
+					# Map same_site int (0/1/2) to W3C values if needed; skipping for compatibility
+					cookies.append(c)
+		finally:
+			conn.close()
+	except Exception as e:
+		print(f"Failed reading cookies from Firefox profile: {e}")
+	finally:
+		try:
+			shutil.rmtree(tmp_dir)
+		except Exception:
+			pass
+	return cookies
+
+def _inject_cookies(driver, base_url: str, cookies: list[dict]):
+	"""Navigate to base_url and inject provided cookies, then reload.
+
+	Note: You must be on the target domain before adding cookies for it.
+	"""
+	if not cookies:
+		return
+	try:
+		driver.get(base_url)
+		for c in cookies:
+			try:
+				driver.add_cookie(c)
+			except Exception:
+				# Some cookies (e.g., with unsupported attributes) may fail to add; continue
+				pass
+		driver.get(base_url)
+	except Exception as e:
+		print(f"Cookie injection failed: {e}")
+
 def create_driver(profile_path: Path | None = None):
 	"""Create and return a Selenium Firefox WebDriver.
 
-	If `profile_path` is provided the function will attempt to start Firefox with
-	that profile (it must not be in use). Exits the process on failure.
+	If `profile_path` is provided, attempts to start Firefox with that profile (it must not be in use).
+	Otherwise starts a clean Firefox session. Cookie injection, if needed, is handled by the caller.
 	"""
 	try:
 		if profile_path:
@@ -75,13 +151,6 @@ def create_driver(profile_path: Path | None = None):
 			if not Path(profile_path).exists():
 				print("Warning: provided profile path does not exist. Firefox may fail to start with this profile.")
 			profile_p = Path(profile_path)
-			# found_locks = check_profile_locks(profile_p)
-			# if found_locks:
-			# 	print(f"Detected lock file(s) in profile directory: {found_locks}")
-			# 	print("This usually means Firefox is running with that profile and it cannot be reused directly.")
-			# 	print("Close Firefox or provide a copy of the profile directory and retry.")
-			# 	sys.exit()
-
 			options = Options()
 			options.add_argument("-profile")
 			options.add_argument(str(profile_p))
@@ -95,29 +164,26 @@ def create_driver(profile_path: Path | None = None):
 		print()
 		sys.exit()
 
-def navigate_and_find_api(driver, target: str, timeout: int = 300, poll_interval: float = 2.0) -> str | None:
-	"""Navigate the given driver to `target` and wait/poll for an RGAPI key in the page source.
+def navigate_and_find_api(driver, target: str, timeout: int = 300, poll_interval: float = 2.0, cookies: list[dict] | None = None) -> str | None:
+	"""Navigate the given driver to `target`, optionally inject cookies, and wait/poll for an RGAPI key.
 
-	Returns the key string if found, otherwise None.
+	- If `cookies` are provided, they are injected after navigating to the target domain.
+	- Returns the key string if found, otherwise None.
 	"""
 	driver.get(target)
-	print("If you are not signed in, please sign in in the opened browser window.")
+	if cookies:
+		print("Injecting cookies to reuse session...")
+		_inject_cookies(driver, target, cookies)
+		
 	print("Waiting for API key to appear on the page...")
 
-	start = time.time()
 	foundApiKey = None
-	while True:
-		try:
-			src = driver.page_source
-		except Exception:
-			src = ""
-		key = find_key_in_text(src)
-		if key:
-			foundApiKey = key
-			break
-		if time.time() - start > timeout:
-			break
-		time.sleep(poll_interval)
+	try:
+		foundApiKey = WebDriverWait(driver, timeout, poll_frequency=poll_interval).until(
+			lambda d: find_key_in_text(d.page_source)
+		)
+	except TimeoutException:
+		pass
 
 	if not foundApiKey:
 		print("API key not found automatically.")
@@ -132,18 +198,27 @@ def navigate_and_find_api(driver, target: str, timeout: int = 300, poll_interval
 
 	return foundApiKey
 
-def run(outputFileName: Path | str = DEFAULT_OUTPUT_FILE, timeout: int = DEFAULT_TIMEOUT, poll_interval: float = DEFAULT_POLL_INTERVAL, profile_path: Path | None = DEFAULT_PROFILE_PATH):
+def run(outputFileName: Path | str = DEFAULT_OUTPUT_FILE, timeout: int = DEFAULT_TIMEOUT, poll_interval: float = DEFAULT_POLL_INTERVAL, profile_path: Path | None = DEFAULT_PROFILE_PATH, cookies_only: bool = DEFAULT_COOKIES_ONLY):
 	ensure_selenium_available()
 	print("Starting Firefox (creating WebDriver)")
 
-	# create the driver (helper handles profile checks)
-	driver = create_driver(profile_path)
+	# create the driver (helper handles profile start only) and prepare cookies if requested
+	cookies: list[dict] | None = None
+	if cookies_only:
+		driver = create_driver(None)
+		if not profile_path or not Path(profile_path).exists():
+			print("Warning: --cookies-only enabled but profile path is missing or invalid; proceeding without cookies.")
+		else:
+			riot_suffixes = ("riotgames.com", "developer.riotgames.com", "auth.riotgames.com")
+			cookies = _read_firefox_cookies(Path(profile_path), riot_suffixes)
+	else:
+		driver = create_driver(profile_path)
 	try:
 		target = r"https://developer.riotgames.com/"
 		print(f"Navigating to {target}")
 
 		# call the navigator that waits/polls the page for an API key
-		foundApiKey = navigate_and_find_api(driver, target, timeout=timeout, poll_interval=poll_interval)
+		foundApiKey = navigate_and_find_api(driver, target, timeout=timeout, poll_interval=poll_interval, cookies=cookies)
 
 		if foundApiKey is None:
 			# None signals the user aborted during interactive retry
@@ -170,13 +245,15 @@ def main(argv: list[str] | None = None):
 	p.add_argument("--timeout", "-t", type=int, default=DEFAULT_TIMEOUT, help=f"Seconds to wait for key to appear (default: {DEFAULT_TIMEOUT})")
 	p.add_argument("--poll-interval", type=float, default=DEFAULT_POLL_INTERVAL, help=f"Seconds between polls while waiting for the key (default: {DEFAULT_POLL_INTERVAL})")
 	p.add_argument("--profile-path", "-p", default=DEFAULT_PROFILE_PATH, help="Path to Firefox profile directory to reuse (use a copy of your profile)")
+	p.add_argument("--cookies-only", action="store_true", default=DEFAULT_COOKIES_ONLY, help="Use only cookies from the Firefox profile (start clean browser)")
 	args = p.parse_args(argv)
 
 	# test profile path
 	# profile = Path(args.profile_path) if args.profile_path else r"C:\Users\jzsmi\OneDrive\Desktop\osbpl924.default"
-	rc = run(args.outputFileName, args.timeout, args.poll_interval, args.profile_path)
+	rc = run(args.outputFileName, args.timeout, args.poll_interval, args.profile_path, cookies_only=args.cookies_only)
 	sys.exit(rc)
 
+# should work with all default parameters
 if __name__ == '__main__':
 	main()
 
