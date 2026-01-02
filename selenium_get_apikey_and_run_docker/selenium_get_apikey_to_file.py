@@ -41,6 +41,7 @@ except Exception:
 DEFAULT_OUTPUT_FILE = "apikey.txt"
 DEFAULT_TIMEOUT = 30
 DEFAULT_POLL_INTERVAL = 2.0
+DEFAULT_PROFILE_PATH = r"C:\Users\jack\AppData\Roaming\Mozilla\Firefox\Profiles\m2svr4b9.default-release"
 DEFAULT_PROFILE_PATH = r"C:\Users\jzsmi\AppData\Roaming\Mozilla\Firefox\Profiles\7mswh3nh.default-release"
 DEFAULT_COOKIES_ONLY = True
 
