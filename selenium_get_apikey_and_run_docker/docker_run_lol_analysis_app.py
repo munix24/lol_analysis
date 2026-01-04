@@ -61,7 +61,7 @@ def remove_existing_container(name: str) -> None:
     # ignore errors
     subprocess.run([docker, "rm", "-f", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-def run_container(image: str, name: str, apikey: str, restart_on_failure: int | None) -> int:
+def run_container(image: str, name: str, apikey: str, restart_on_failure: int | None, dbserverandport: str | None = None) -> int:
     docker = shutil.which("docker") or "docker"
     if restart_on_failure is None:
         restart_arg = None
@@ -71,7 +71,10 @@ def run_container(image: str, name: str, apikey: str, restart_on_failure: int | 
     cmd = [docker, "run", "-d"]
     if restart_arg:
         cmd.append(f"--restart={restart_arg}")
-    cmd += ["--name", name, "-e", f"riotapikey={apikey}", image]
+    cmd += ["--name", name, "-e", f"riotapikey={apikey}"]
+    if dbserverandport:
+        cmd += ["-e", f"dbserverandport={dbserverandport}"]
+    cmd += [image]
 
     print("Running container.")
     try:
@@ -85,8 +88,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     p = argparse.ArgumentParser(description="Run lol_analysis_app container with Riot API key")
     p.add_argument("--apikey", "-k", help="Riot API key to pass to the container")
-    p.add_argument("--restart-on-failure", "-r", type=int, default=DEFAULT_RESTART_ON_FAILURE,
-                   help=f"Restart on failure retries (default: {DEFAULT_RESTART_ON_FAILURE})")
+    p.add_argument("--dbserverandport", "-s", help="Database server host:port to pass as env var (e.g., localhost:27017)")
+    p.add_argument("--restart-on-failure", "-r", type=int, default=DEFAULT_RESTART_ON_FAILURE, help=f"Restart on failure retries (default: {DEFAULT_RESTART_ON_FAILURE})")
     p.add_argument("--image", help="Docker image to run", default=DEFAULT_IMAGE)
     p.add_argument("--name", help="Container name", default=DEFAULT_NAME)
     args = p.parse_args(argv)
@@ -108,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     print("Removing existing container (if any)...")
     remove_existing_container(args.name)
 
-    rc = run_container(args.image, args.name, apikey, args.restart_on_failure)
+    rc = run_container(args.image, args.name, apikey, args.restart_on_failure, args.dbserverandport)
     if rc != 0:
         print("ERROR: docker run failed with exit code", rc)
         return rc

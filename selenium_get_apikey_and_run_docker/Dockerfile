@@ -19,4 +19,4 @@ COPY . /app
 # - Mount /var/run/docker.sock for Docker access
 # - Mount host folder so apikey.txt is available
 ENTRYPOINT ["python", "docker_get_apikey_and_run.py"]
-CMD ["--force-get", "False", "--outputFileName", "apikey.txt"]
+CMD ["--force-get", "--outputFileName", "apikey.txt"]

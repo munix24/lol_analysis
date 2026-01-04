@@ -41,7 +41,6 @@ except Exception:
 DEFAULT_OUTPUT_FILE = "apikey.txt"
 DEFAULT_TIMEOUT = 30
 DEFAULT_POLL_INTERVAL = 2.0
-DEFAULT_PROFILE_PATH = r"C:\Users\jack\AppData\Roaming\Mozilla\Firefox\Profiles\m2svr4b9.default-release"
 DEFAULT_PROFILE_PATH = r"C:\Users\jzsmi\AppData\Roaming\Mozilla\Firefox\Profiles\7mswh3nh.default-release"
 DEFAULT_COOKIES_ONLY = True
 
@@ -233,7 +232,6 @@ def run(outputFileName: Path | str = DEFAULT_OUTPUT_FILE, timeout: int = DEFAULT
 		try:
 			outp = (Path(__file__).resolve().parent / Path(outputFileName)) if not Path(outputFileName).is_absolute() else Path(outputFileName)
 			outp.write_text(foundApiKey, encoding="utf-8")
-			# Path(outputFileName).write_text(foundApiKey, encoding="utf-8")
 		except (OSError, PermissionError) as e:
 			print(f"Failed to write API key to {outp}: {e}")
 			return 5

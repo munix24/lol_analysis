@@ -2,12 +2,13 @@ There are 3 REST API endpoints that generate the json data you see in the data f
 
 REQUIRED environment variables:
 riotapikey: key used when making API reqs to riot
+dbserverandport: mongoDB connection string (localhost / local network / server)
 
 OPTIONAL environment variables: (if not provided will connect to local network mongoDB)
-dbserverandport: database connection string. If it begins with "server" will default to sql server, if "mongo" will use mongoDB
 dbusr: user to login to database
 dbpwd: password to login to database
 dbdatabase: database name
+debug: INFO/DEBUG
 
 
 tables:
@@ -33,9 +34,7 @@ localhost mongodb with user / pwd + volume
 		-v volume?
 		mongodb/mongodb-community-server:latest
 
-
-docker service update --env-add riotapikey="RGAPI-08cc3e12-9798-49f9-933c-b3c4178adf73" lol_analysis_app
-
 docker run -d --restart=on-failure:3 --name lol_analysis_app -e riotapikey="%riotapikey%" munix244/lol_analysis_app
 docker run -d --restart=on-failure:3 --name lol_analysis_app --env-file ./lol_analysis/env_mongo_db.env munix244/lol_analysis_app
 
+docker service update --env-add riotapikey="RGAPI-08cc3e12-9798-49f9-933c-b3c4178adf73" lol_analysis_app
