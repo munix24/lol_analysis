@@ -1,11 +1,11 @@
 W/O COMPOSE FILE
 	Build image
-		docker build -t hello-python:latest .
+		docker build -t munix244/lol_analysis_app:latest .
 
 		-t hello-python:latest tags the image with a name.
 		. means the build context is the current folder.
 
-	Run Image
+	Run Container from Image
 		docker run --rm hello-python:latest
 
 		--rm removes the container after it exits.

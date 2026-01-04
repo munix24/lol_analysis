@@ -11,21 +11,18 @@ except Exception:
     pymongo = None
 
 class MongoDBClient:
-    def __init__(self, db_server_and_port: str = None, db_usr: str = None, db_pwd: str = None, db_database: str = None):
+    def __init__(self, db_server_and_port: str = None, db_usr: str = None, db_pwd: str = None, db_database: str = 'lol_analysis'):
         if pymongo is None:
             raise ImportError("pymongo is required for MongoDB backend. Install with 'pip install pymongo'.")
         try:
-            if not db_server_and_port:
-                self.client = pymongo.MongoClient("192.168.1.167")     # conn to default localhost:27017
-            elif 'localhost' in db_server_and_port.lower():
+            if 'localhost' in db_server_and_port.lower():
                 self.client = pymongo.MongoClient()     # conn to default localhost:27017
+            elif db_server_and_port and not db_usr and not db_pwd:
+                self.client = pymongo.MongoClient(db_server_and_port)     # conn to local db
             else:
                 conn_str = "mongodb://" + db_usr + ":" + db_pwd + "@" + db_server_and_port +  \
                     "/?ssl=true&retrywrites=false&replicaSet=globaldb&maxIdleTimeMS=120000&appName=@tzdimi01@"
                 self.client = pymongo.MongoClient(conn_str)
-
-            if not db_database:
-                db_database = 'lol_analysis'
 
             self.db = self.client[db_database]
             print("Connected to MongoDB server:", db_server_and_port)
