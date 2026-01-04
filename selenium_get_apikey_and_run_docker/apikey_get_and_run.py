@@ -58,6 +58,8 @@ def get_apikey(args) -> tuple[int, str | None]:
         cli_argv += ["--poll-interval", str(args.poll_interval)]
     if args.profile_path is not None:
         cli_argv += ["--profile-path", str(args.profile_path)]
+    if getattr(args, "cookies_only", False):
+        cli_argv += ["--cookies-only"]
 
     print("Retrieving API key via browser (Selenium)...")
     try:
@@ -94,6 +96,8 @@ def start_container(apikey: str, args) -> int:
         docker_argv += ["--image", args.image]
     if args.name:
         docker_argv += ["--name", args.name]
+    if args.dbserverandport:
+        docker_argv += ["--dbserverandport", args.dbserverandport]
 
     print("Starting Docker container with retrieved key...")
     try:
@@ -112,18 +116,20 @@ def start_container(apikey: str, args) -> int:
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     p = argparse.ArgumentParser(description="Get Riot API key then run Docker container")
-    p.add_argument("--force-get", action="store_true", 
-                   help="Always run the Selenium retriever even if the file exists and contains a key")
-    p.add_argument("--outputFileName", "-o", default="apikey.txt",
-                   help="Optional file to read/write the API key (default: apikey.txt if omitted)")
-    p.add_argument("--timeout", type=int, default=None, help="Optional timeout (seconds) to wait for key in browser")
-    p.add_argument("--profile-path", default=None, help="Optional Firefox profile path to reuse (use a copy)")
-    p.add_argument("--poll-interval", type=float, default=None, help="Optional poll interval (seconds) when waiting for the API key")
+    p.add_argument("--force-get", action="store_true", default=True, help="Always run the Selenium retriever even if the file exists and contains a key")
+    
+    # Selenium runner options (passed through to selenium_get_apikey_to_file)
+    p.add_argument("--outputFileName", "-o", default="apikey.txt", help="Optional file to read/write the API key (default: apikey.txt if omitted)")
+    p.add_argument("--timeout", type=int, help="Optional timeout (seconds) to wait for key in browser")
+    p.add_argument("--profile-path", help="Optional Firefox profile path to reuse (use a copy)")
+    p.add_argument("--poll-interval", type=float, help="Optional poll interval (seconds) when waiting for the API key")
+    p.add_argument("--cookies-only", action="store_true", help="Start a clean browser and inject cookies from the profile (if provided)")
 
     # Docker runner options (passed through to docker_run_lol_analysis_app)
-    p.add_argument("--restart-on-failure", type=int, default=None, help="Docker restart on-failure count (optional)")
-    p.add_argument("--image", default=None, help="Docker image to run (overrides default if provided)")
-    p.add_argument("--name", default=None, help="Container name to use (overrides default if provided)")
+    p.add_argument("--restart-on-failure", type=int, help="Docker restart on-failure count (optional)")
+    p.add_argument("--image", help="Docker image to run (overrides default if provided)")
+    p.add_argument("--name", help="Container name to use (overrides default if provided)")
+    p.add_argument("--dbserverandport", help="Database server host:port to pass to container env (e.g., localhost:27017)")
 
     args = p.parse_args(argv)
 

@@ -18,7 +18,7 @@ class MongoDBClient:
             if 'localhost' in db_server_and_port.lower():
                 self.client = pymongo.MongoClient()     # conn to default localhost:27017
             elif db_server_and_port and not db_usr and not db_pwd:
-                self.client = pymongo.MongoClient(db_server_and_port)     # conn to local db
+                self.client = pymongo.MongoClient(db_server_and_port)     # conn to local network db
             else:
                 conn_str = "mongodb://" + db_usr + ":" + db_pwd + "@" + db_server_and_port +  \
                     "/?ssl=true&retrywrites=false&replicaSet=globaldb&maxIdleTimeMS=120000&appName=@tzdimi01@"
