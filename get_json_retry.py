@@ -19,6 +19,7 @@ class RateLimiter:
         self.rate_seconds = float(rate_seconds)
         self._request_timestamps = deque()
         self._cond = threading.Condition()
+        self._request_meter = RequestMeter(60 * 60)
 
     def wait_for_slot(self):
         """Block until a slot is available, then record the request timestamp."""
@@ -31,6 +32,7 @@ class RateLimiter:
 
                 if len(self._request_timestamps) < self.max_requests:
                     self._request_timestamps.append(now)
+                    self._request_meter.record(now)
                     # Optional: notify waiters to re-check sooner
                     self._cond.notify_all()
                     return
@@ -39,10 +41,94 @@ class RateLimiter:
                 wait_time = self.rate_seconds - (now - oldest)
                 if wait_time <= 0:
                     continue
-                if wait_time > (self.rate_seconds / 2):
+
+                if wait_time > (self.rate_seconds / 3):     # log if waiting significant time
                     logger.info("Rate limit reached. Sleeping for %d seconds...", int(wait_time))
+                    # include  a summary of requests (total and last-hour) for observability.
+                    logger.info(
+                        "Requests summary: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
+                        self._request_meter.total(),
+                        self._request_meter.count(now),
+                        self._request_meter.seconds_since_first(now),
+                        self._request_meter.reqs_per_hour(now),
+                    )
                 # Efficient wait: releases lock, reacquires on wake/timeout
                 self._cond.wait(timeout=wait_time)
+
+class RequestMeter:
+    """Counts requests within a rolling longer window (e.g. 1 hour).
+
+    Keeps a deque of timestamps for the rolling window and a simple
+    cumulative counter. Thread-safe via an internal Lock.
+    """
+    def __init__(self, window_seconds: float = 3600.0):
+        self.window_seconds = float(window_seconds)
+        self._timestamps = deque()
+        self._lock = threading.Lock()
+        self._total = 0
+
+    def record(self, ts: float = None):
+        ts = ts or time.time()
+        with self._lock:
+            self._timestamps.append(ts)
+            self._total += 1
+            cutoff = ts - self.window_seconds
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.popleft()
+
+    def count(self, now: float = None) -> int:
+        now = now or time.time()
+        with self._lock:
+            cutoff = now - self.window_seconds
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.popleft()
+            return len(self._timestamps)
+
+    def total(self) -> int:
+        with self._lock:
+            return int(self._total)
+
+    def log_request_stats(self):
+        """Log an info summary with total requests and requests in the last hour."""
+        try:
+            now = time.time()
+            logger.info(
+                "Requests summary: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
+                self.total(),
+                self.count(now),
+                self.seconds_since_first(now),
+                self.reqs_per_hour(now),
+            )
+        except Exception:
+            logger.exception("Failed to compute request stats")
+
+    def seconds_since_first(self, now: float = None) -> float:
+        """Return seconds since the first recorded timestamp in the window.
+
+        If there are no timestamps, returns 0.0.
+        """
+        now = now or time.time()
+        with self._lock:
+            if not self._timestamps:
+                return 0.0
+            first_ts = float(self._timestamps[0])
+        seconds = now - first_ts
+        return float(seconds) if seconds >= 0.0 else 0.0
+
+    def reqs_per_hour(self, now: float = None) -> float:
+        """Estimate average requests per hour since the first recorded request.
+
+        If there are no requests, returns 0.0. If the elapsed time is very
+        small, returns the total as an approximation.
+        """
+        now = now or time.time()
+        total = self.total()
+        seconds = self.seconds_since_first(now)
+        if total <= 0:
+            return 0.0
+        if seconds <= 0.0:
+            return float(total)
+        return float(total) * 3600.0 / float(seconds)
 
 
 """Ensures we do not exceed MAX_API_REQUESTS per API_REQUESTS_RESET_SEC."""
