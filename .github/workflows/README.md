@@ -26,7 +26,7 @@ To enable automatic Docker image pushing, you need to configure the following se
 | Secret Name | Description | Example Value |
 |------------|-------------|---------------|
 | `DOCKER_USERNAME` | Your Docker Hub username | `munix244` |
-| `DOCKER_PASSWORD` | Your Docker Hub password or access token | `dckr_pat_...` (recommended: use access token) |
+| `DOCKER_TOKEN` | Your Docker Hub password or access token | `dckr_pat_...` (recommended: use access token) |
 
 #### How to get a Docker Hub Access Token (Recommended):
 
@@ -35,7 +35,7 @@ To enable automatic Docker image pushing, you need to configure the following se
 3. Click **New Access Token**
 4. Give it a description (e.g., "GitHub Actions")
 5. Set permissions to **Read, Write, Delete**
-6. Copy the token and use it as `DOCKER_PASSWORD`
+6. Copy the token and use it as `DOCKER_TOKEN`
 
 ### Docker Image Details
 
@@ -76,7 +76,7 @@ This will create images with tags: `1.0.0`, `1.0`, `1`, and `latest`
 
 If the workflow fails:
 
-1. **Check secrets**: Ensure `DOCKER_USERNAME` and `DOCKER_PASSWORD` are set correctly
+1. **Check secrets**: Ensure `DOCKER_USERNAME` and `DOCKER_TOKEN` are set correctly
 2. **Check Docker Hub login**: Verify your Docker Hub credentials are valid
 3. **Check Dockerfile**: Ensure the Dockerfile builds locally: `docker build -t test .`
 4. **View workflow logs**: Go to the **Actions** tab in GitHub to see detailed logs
