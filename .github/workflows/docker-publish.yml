@@ -20,6 +20,11 @@ jobs:
   docker:
     runs-on: ubuntu-latest
 
+    # Set explicit permissions for the GITHUB_TOKEN
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
