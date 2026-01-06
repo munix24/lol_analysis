@@ -67,5 +67,5 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      - name: Image digest
+      - name: Build complete
         run: echo "Image built and pushed successfully!"

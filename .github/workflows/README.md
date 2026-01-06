@@ -89,6 +89,8 @@ Before pushing, you can test the Docker build locally:
 # Build the image
 docker build -t munix244/lol_analysis_app:test .
 
-# Run the container
+# Run the container (requires MongoDB to be running - see main README.txt)
 docker run --rm -e riotapikey="your-key" -e dbserverandport="mongodb://localhost:27017" munix244/lol_analysis_app:test
 ```
+
+**Note**: This application requires MongoDB as a database backend. See the main README.txt for MongoDB setup instructions.
