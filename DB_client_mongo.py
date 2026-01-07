@@ -102,9 +102,14 @@ class MongoDBClient:
 
     def select_oldest_ranked_puuids_df(self) -> pd.DataFrame:
         coll = self.db['LeagueV4']
-        cursor = coll.find(
-                    {'queueType': 'RANKED_SOLO_5x5'}, 
-                    {'puuid': 1, '_id': 0}).sort([('updateMatchesUtc', 1), ('totalGames', -1)]).limit(100)
+        # Exclude documents where updateMatchesUtc is missing or null so sorting behaves predictably
+        query = {
+            'queueType': 'RANKED_SOLO_5x5',
+            'updateMatchesUtc': {'$exists': True, '$ne': None}
+        }
+        cursor = coll.find(query, {'puuid': 1, '_id': 0})\
+                     .sort([('updateMatchesUtc', 1), ('totalGames', -1)])\
+                     .limit(100)
         docs = list(cursor)
         df = pd.DataFrame(docs)
         return df
@@ -143,9 +148,10 @@ class MongoDBClient:
             
     def merge_league_v4(self, puuid: str, leagues_v4_json: List[Dict[str, Any]]):
         """Upsert league entries for the given `puuid` and update the `updateMatchesUtc` timestamp."""
-
         self.merge_league_v4_no_commit(leagues_v4_json)
+        self.update_MatchesUtc_league_v4(puuid)
 
+    def update_MatchesUtc_league_v4(self, puuid: str):
         coll = self.db['LeagueV4']
         now = pd.Timestamp.utcnow().to_pydatetime()
         coll.update_many({'puuid': puuid}, {'$set': {'updateMatchesUtc': now}})
@@ -163,6 +169,8 @@ class MongoDBClient:
             docs.append(doc)
         if docs:
             coll.insert_many(docs, session=session)
+
+    
 
     def insert_match_no_commit(self, matchID: str, dataVersion: str, match_info_json: Dict[str, Any], session=None):
         coll = self.db['Match']

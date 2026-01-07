@@ -44,6 +44,9 @@ def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
         if info.get('gameDuration', 0) <= min_duration:         # not earlySurrender
             logger.info('gameDuration <= %s', min_duration)
             return False
+        if not info.get('gameVersion', '').startswith(('15.24', '16.1')):
+            logger.info('gameVersion does not start with 15.24 or 16.1: %s', info.get('gameVersion', ''))
+            return False
         return True
     except Exception:
         return False
@@ -66,7 +69,7 @@ def lookup_and_process_matches_for_oldest_ranked_puuids(get_leagues_v4 = True):
                 logger.info('total matchIDs above threshold: %s', len(matchIDs_list))
 
                 matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       # even if null continue to update puuid
-                logger.info('new matchIDs to process: %s', len(matchIDs_list or []))
+                logger.info('new matchIDs not in table: %s', len(matchIDs_list or []))
 
                 for matchID in matchIDs_list:
                     logger.info('processing matchID: %s', matchID)
@@ -92,8 +95,11 @@ def lookup_and_process_matches_for_oldest_ranked_puuids(get_leagues_v4 = True):
                         finally:
                             DB_client.db.close_transaction(session)
 
-                leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(puuid)
-                DB_client.db.merge_league_v4(puuid, leagues_v4_json)
+                if get_leagues_v4:
+                    leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(puuid)
+                    DB_client.db.merge_league_v4(puuid, leagues_v4_json)
+                else:
+                    DB_client.db.update_MatchesUtc_league_v4(puuid)
     except KeyboardInterrupt:
         print("KeyboardInterrupt used. Shutting down...")
     except Exception as e:
