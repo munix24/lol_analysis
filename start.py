@@ -48,7 +48,7 @@ def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
     except Exception:
         return False
 
-def lookup_and_process_matches_for_oldest_ranked_puuids():
+def lookup_and_process_matches_for_oldest_ranked_puuids(get_leagues_v4 = True):
     try:
         while True:
             df_puuids = DB_client.db.select_oldest_ranked_puuids_df()
@@ -78,20 +78,20 @@ def lookup_and_process_matches_for_oldest_ranked_puuids():
                             # session = DB_client.db.begin_transaction()
                             session = None
 
-                            for participant in match_json['info']['participants']:  # shouldn't be null after gamecomplete
-                                if participant['puuid'] != puuid and participant['puuid'] != 'BOT':                      # don't update initial participant leagueV4 yet
-                                    leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(participant['puuid'])
-                                    for league_v4_json in leagues_v4_json:
-                                        if league_v4_json['queueType'] == 'RANKED_SOLO_5x5':
-                                            DB_client.db.merge_league_v4_no_commit(league_v4_json, None)
-                                            logger.info('processing puuid: %s', participant['puuid'])
+                            if get_leagues_v4:
+                                for participant in match_json['info']['participants']:  # shouldn't be null after gamecomplete
+                                    if participant['puuid'] != puuid and participant['puuid'] != 'BOT':                      # don't update initial participant leagueV4 yet
+                                        leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(participant['puuid'])
+                                        for league_v4_json in leagues_v4_json:
+                                            if league_v4_json['queueType'] == 'RANKED_SOLO_5x5':
+                                                DB_client.db.merge_league_v4_no_commit(league_v4_json, None)
+                                                logger.info('processing puuid: %s', participant['puuid'])
 
                             DB_client.db.insert_match_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], None)
                             DB_client.db.commit_transaction(session)
                         finally:
                             DB_client.db.close_transaction(session)
 
-                # fetch latest league data and persist via DB_client.db client
                 leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(puuid)
                 DB_client.db.merge_league_v4(puuid, leagues_v4_json)
     except KeyboardInterrupt:
@@ -101,4 +101,4 @@ def lookup_and_process_matches_for_oldest_ranked_puuids():
         raise
 
 if __name__ == "__main__":
-    lookup_and_process_matches_for_oldest_ranked_puuids()
+    lookup_and_process_matches_for_oldest_ranked_puuids(get_leagues_v4 = False)
