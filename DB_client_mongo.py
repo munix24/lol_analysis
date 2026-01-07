@@ -100,19 +100,33 @@ class MongoDBClient:
             except Exception:
                 pass
 
-    def select_oldest_ranked_puuids_df(self) -> pd.DataFrame:
+    def select_oldest_ranked_puuids(self) -> "pymongo.cursor.Cursor":
         coll = self.db['LeagueV4']
         # Exclude documents where updateMatchesUtc is missing or null so sorting behaves predictably
         query = {
             'queueType': 'RANKED_SOLO_5x5',
             'updateMatchesUtc': {'$exists': True, '$ne': None}
         }
-        cursor = coll.find(query, {'puuid': 1, '_id': 0})\
-                     .sort([('updateMatchesUtc', 1), ('totalGames', -1)])\
+        cursor = coll.find(query, {'puuid': 1, '_id': 0}) \
+                     .sort([('updateMatchesUtc', 1), ('totalGames', -1)]) \
                      .limit(100)
-        docs = list(cursor)
-        df = pd.DataFrame(docs)
-        return df
+        # docs = list(cursor)
+        # df = pd.DataFrame(docs)
+        return cursor
+
+    def select_most_recent_matches(self) -> "pymongo.cursor.Cursor":
+        coll = self.db['Match']
+        # Exclude documents where gameCreation is missing or null so sorting behaves predictably
+        query = {'updateMatchesUtc': {'$exists': True, '$ne': None}}
+        projection = {'matchID': 1, 'updateMatchesUtc': 1, 'participants': 1, '_id': 0}
+        # Get most recent matches by gameCreation (descending). Adjust limit as needed.
+        cursor = coll.find(query, projection).sort([('updateMatchesUtc', -1)]).limit(100)
+        return cursor
+
+    def update_MatchesUtc_match(self, matchID: str):
+        coll = self.db['Match']
+        now = pd.Timestamp.utcnow().to_pydatetime()
+        coll.update_many({'matchID': matchID}, {'$set': {'updateMatchesUtc': now}})
 
     def select_matches_in_list_not_in_table(self, matchIDs_list: List[str]) -> List[str]:
         if not matchIDs_list:
@@ -170,8 +184,6 @@ class MongoDBClient:
         if docs:
             coll.insert_many(docs, session=session)
 
-    
-
     def insert_match_no_commit(self, matchID: str, dataVersion: str, match_info_json: Dict[str, Any], session=None):
         coll = self.db['Match']
         doc = {'matchID': matchID, 'dataVersion': dataVersion}
@@ -192,6 +204,7 @@ class MongoDBClient:
                     doc[k] = v
         
         doc['createdUtc'] = pd.Timestamp.utcnow().to_pydatetime()
+        doc['updateMatchesUtc'] = pd.Timestamp.utcnow().to_pydatetime()
         coll.insert_one(doc, session=session)
 
     def adhoc_league_v4_merge(self):
