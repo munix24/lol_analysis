@@ -100,7 +100,7 @@ class MongoDBClient:
             except Exception:
                 pass
 
-    def select_oldest_ranked_puuids(self) -> "pymongo.cursor.Cursor":
+    def select_oldest_ranked_puuids(self):
         coll = self.db['LeagueV4']
         # Exclude documents where updateMatchesUtc is missing or null so sorting behaves predictably
         query = {
@@ -110,17 +110,21 @@ class MongoDBClient:
         cursor = coll.find(query, {'puuid': 1, '_id': 0}) \
                      .sort([('updateMatchesUtc', 1), ('totalGames', -1)]) \
                      .limit(100)
-        # docs = list(cursor)
-        # df = pd.DataFrame(docs)
-        return cursor
+        doc_list = list(cursor)
+        # df = pd.DataFrame(doc_list)
+        return doc_list
 
-    def select_most_recent_matches(self) -> "pymongo.cursor.Cursor":
+    def select_oldest_matches(self):
         coll = self.db['Match']
         # Exclude documents where gameCreation is missing or null so sorting behaves predictably
-        query = {'updateMatchesUtc': {'$exists': True, '$ne': None}}
+        query = {
+            'updateMatchesUtc': {'$exists': True, '$ne': None},
+            '$expr': {'$eq': ['$updateMatchesUtc', '$createdUtc']}  # only matches not yet processed
+        }
         projection = {'matchID': 1, 'updateMatchesUtc': 1, 'participants': 1, '_id': 0}
         # Get most recent matches by gameCreation (descending). Adjust limit as needed.
         cursor = coll.find(query, projection).sort([('updateMatchesUtc', -1)]).limit(100)
+        # docs = list(cursor)
         return cursor
 
     def update_MatchesUtc_match(self, matchID: str):

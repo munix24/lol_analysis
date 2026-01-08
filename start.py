@@ -51,10 +51,10 @@ def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
     except Exception:
         return False
 
-def lookup_and_process_matches_for_recent_matches():
+def lookup_and_process_matches_only_for_recent_matches():
     try:
         while True:
-            df_matches = DB_client.db.select_most_recent_matches()
+            df_matches = DB_client.db.select_oldest_matches()
             for participant in df_matches['participants']:
                 puuid = participant['puuid']
                 logger.info('puuid: %s', puuid)
@@ -71,6 +71,7 @@ def lookup_and_process_matches_for_recent_matches():
 
                 for matchID in matchIDs_list:
                     DB_client.db.insert_match_no_commit(matchID, None, None, None)
+
     except KeyboardInterrupt:
         print("KeyboardInterrupt used. Shutting down...")
     except Exception as e:
@@ -130,13 +131,14 @@ def lookup_matches_and_leagues_v4_for_oldest_ranked_puuids(start: int = 0, count
         print("Error occured: ", e)
         raise
 
-def lookup_matches_for_recent_match_participants():
+def lookup_matches_for_oldest_match_participants():
     try:
         while True:
-            cursor = DB_client.db.select_most_recent_matches()
+            cursor = DB_client.db.select_oldest_matches()
             for doc in cursor:
                 matchID = doc['matchID']
                 logger.info('matchID: %s', matchID)
+
                 for participant in doc['participants']:
                     puuid = participant['puuid']
                     process_puuid(puuid, get_league_v4_API_json = False)
@@ -150,4 +152,4 @@ def lookup_matches_for_recent_match_participants():
 
 if __name__ == "__main__":
     # lookup_matches_and_leagues_v4_for_oldest_ranked_puuids()
-    lookup_matches_for_recent_match_participants()
+    lookup_matches_for_oldest_match_participants()
