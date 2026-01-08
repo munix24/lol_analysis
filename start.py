@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 logger.info("Logging configured; root level=%s", logging.getLevelName(_level))
 
 GAME_VERSION_PREFIX = ('16',)            # only want V16.1 games.
-MATCHID_THRESHOLD = 5_458_700_000       # Should be as limiting as possible to reduce API calls
+MATCHID_THRESHOLD = 5_458_750_000       # Should be as limiting as possible to reduce API calls
 
 # filter bad games, otherwise will use up resources querying later
 def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
