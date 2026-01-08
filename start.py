@@ -24,13 +24,10 @@ logger = logging.getLogger(__name__)
 # Announce the configured root logging level so startup logs show it
 logger.info("Logging configured; root level=%s", logging.getLevelName(_level))
 
-# 5420859667 is latest gameID of 15.23
-def is_matchID_after_threshold(matchID, region_prefix = "NA1_", threshold = 5_421_000_000) -> bool:
-    try:
-        return int(matchID[len(region_prefix):]) > threshold
-    except ValueError:
-        return False
-          
+# 5_421_000_000 for game V15.24
+# 5_458_500_000 for game V16.1
+MATCHID_THRESHOLD = 5_458_500_000       # only want V15.24 or V16.1 games
+
 # filter bad games, otherwise will use up resources querying later
 def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
     try:
@@ -51,7 +48,7 @@ def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
     except Exception:
         return False
 
-def lookup_and_process_matches_only_for_recent_matches():
+def lookup_and_process_matches_only():
     try:
         while True:
             df_matches = DB_client.db.select_oldest_matches()
@@ -59,12 +56,8 @@ def lookup_and_process_matches_only_for_recent_matches():
                 puuid = participant['puuid']
                 logger.info('puuid: %s', puuid)
 
-                matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid)                      # even if null continue to update puuid
-                logger.info('total matchIDs for puuid: %s', len(matchIDs_list or []))
-
-                # only want V15.24 games
-                matchIDs_list = [m for m in (matchIDs_list or []) if is_matchID_after_threshold(m)]
-                logger.info('total matchIDs above threshold: %s', len(matchIDs_list))
+                matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)                      # even if null continue to update puuid
+                logger.info('total matchIDs for puuid above season threshold: %s', len(matchIDs_list or []))
 
                 matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       # even if null continue to update puuid
                 logger.info('new matchIDs not in table: %s', len(matchIDs_list or []))
@@ -78,21 +71,18 @@ def lookup_and_process_matches_only_for_recent_matches():
         print("Error occured: ", e)
         raise
 
-def process_puuid(puuid, get_league_v4_API_json):
+def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
+    logger.info('')
     logger.info('puuid: %s', puuid)
 
-    matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid)                      # even if null continue to update puuid
-    logger.info('total matchIDs for puuid: %s', len(matchIDs_list or []))
+    matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)             
+    logger.info('total matchIDs for puuid above threshold: %s', len(matchIDs_list or []))
 
-    # only want V15.24 games
-    matchIDs_list = [m for m in (matchIDs_list or []) if is_matchID_after_threshold(m)]
-    logger.info('total matchIDs above threshold: %s', len(matchIDs_list))
-
-    matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       # even if null continue to update puuid
+    matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       
     logger.info('new matchIDs not in table: %s', len(matchIDs_list or []))
 
     for matchID in matchIDs_list:
-        logger.info('processing matchID: %s', matchID)
+        logger.info('found matchID: %s', matchID)
 
         match_json = API_match.get_match_API_json_by_matchID(matchID)
         if should_process_match(match_json):   
@@ -102,48 +92,58 @@ def process_puuid(puuid, get_league_v4_API_json):
                 session = None
 
                 if get_league_v4_API_json:
-                    for participant in match_json['info']['participants']:  # shouldn't be null after gamecomplete
-                        if participant['puuid'] != puuid and participant['puuid'] != 'BOT':                      # don't update initial participant leagueV4 yet
-                            leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(participant['puuid'])
+                    for participant_json in match_json['info']['participants']:  # shouldn't be null after gamecomplete
+                        if participant_json['puuid'] != puuid and participant_json['puuid'] != 'BOT':                      # don't update initial participant leagueV4 yet
+                            leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(participant_json['puuid'])
                             for league_v4_json in leagues_v4_json:
                                 if league_v4_json['queueType'] == 'RANKED_SOLO_5x5':
                                     DB_client.db.merge_league_v4_no_commit(league_v4_json, None)
-                                    logger.info('processing puuid: %s', participant['puuid'])
+                                    logger.info('processing puuid: %s', participant_json['puuid'])
+                else:
+                    pass
 
+                logger.info('Inserting matchID: %s', matchID)
                 DB_client.db.insert_match_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], None)
                 DB_client.db.commit_transaction(session)
             finally:
                 DB_client.db.close_transaction(session)
 
-def lookup_matches_and_leagues_v4_for_oldest_ranked_puuids(start: int = 0, count: int = 100):
+def lookup_matches_and_leagues_v4_for_oldest_ranked_puuids(get_league_v4_API_json = False):
     try:
         while True:
-            cursor = DB_client.db.select_oldest_ranked_puuids(start=start, count=count)
+            cursor = DB_client.db.select_oldest_ranked_puuids()
             for doc in cursor:
                 puuid = doc['puuid']
-                process_puuid(puuid, get_league_v4_API_json = True)
+                get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json)
 
-                leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(puuid)
-                DB_client.db.merge_league_v4(puuid, leagues_v4_json)
+                if get_league_v4_API_json:
+                    leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(puuid)
+                    DB_client.db.merge_league_v4(puuid, leagues_v4_json)
+                else:
+                    pass
     except KeyboardInterrupt:
         print("KeyboardInterrupt used. Shutting down...")
     except Exception as e:
         print("Error occured: ", e)
         raise
 
-def lookup_matches_for_oldest_match_participants():
+def process_oldest_match():
     try:
         while True:
-            cursor = DB_client.db.select_oldest_matches()
-            for doc in cursor:
-                matchID = doc['matchID']
-                logger.info('matchID: %s', matchID)
+            matches = DB_client.db.select_oldest_matches()
+            for match in matches:
+                matchID = match['matchID']
+                logger.info('processing matchID: %s', matchID)
 
-                for participant in doc['participants']:
-                    puuid = participant['puuid']
-                    process_puuid(puuid, get_league_v4_API_json = False)
+                for participant_json in match['participants']:
+                    puuid = participant_json['puuid']
+                    get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False)
+
+                    # After processing all participant's matches, update the participant's win / loss / winP
+                    # no, just build a query that will calculate it
 
                 DB_client.db.update_MatchesUtc_match(matchID)
+
     except KeyboardInterrupt:
         print("KeyboardInterrupt used. Shutting down...")
     except Exception as e:
@@ -152,4 +152,4 @@ def lookup_matches_for_oldest_match_participants():
 
 if __name__ == "__main__":
     # lookup_matches_and_leagues_v4_for_oldest_ranked_puuids()
-    lookup_matches_for_oldest_match_participants()
+    process_oldest_match()

@@ -119,11 +119,11 @@ class MongoDBClient:
         # Exclude documents where gameCreation is missing or null so sorting behaves predictably
         query = {
             'updateMatchesUtc': {'$exists': True, '$ne': None},
-            '$expr': {'$eq': ['$updateMatchesUtc', '$createdUtc']}  # only matches not yet processed
+            # '$expr': {'$eq': ['$updateMatchesUtc', '$createdUtc']}  # only matches not yet processed
         }
         projection = {'matchID': 1, 'updateMatchesUtc': 1, 'participants': 1, '_id': 0}
         # Get most recent matches by gameCreation (descending). Adjust limit as needed.
-        cursor = coll.find(query, projection).sort([('updateMatchesUtc', -1)]).limit(100)
+        cursor = coll.find(query, projection).sort([('updateMatchesUtc', 1)]).limit(1)
         # docs = list(cursor)
         return cursor
 
@@ -174,19 +174,29 @@ class MongoDBClient:
         now = pd.Timestamp.utcnow().to_pydatetime()
         coll.update_many({'puuid': puuid}, {'$set': {'updateMatchesUtc': now}})
 
+    def dict_exclude_keys(self, data: Dict[str, Any], exclude: set) -> Dict[str, Any]:
+        """Return a new dictionary excluding the specified keys."""
+        return {k: v for k, v in data.items() if k not in exclude}
+
     # participants are part of match document in MongoDB
-    def insert_participants_no_commit(self, matchID: str, participant_json: List[Dict[str, Any]], session=None):
-        coll = self.db['MatchParticipant']
-        docs = []
-        exclude = {'perks', 'challenges', 'missions', 'bountyLevel'}
-        for p in participant_json:
-            doc = {'matchID': matchID}
-            for k, v in p.items():
-                if k not in exclude:
-                    doc[k] = v
-            docs.append(doc)
-        if docs:
-            coll.insert_many(docs, session=session)
+    def insert_participant_no_commit(self, matchID: str, dataVersion: str, match_info_json: Dict[str, Any], participant_json: List[Dict[str, Any]], session=None):
+        coll = self.db['Participant']
+        # Merge all keys from match_info_json except 'participants' into each participant entry
+        doc = {'matchID': matchID, 'dataVersion': dataVersion}
+        match_info_json_exclude_participants = self.dict_exclude_keys(match_info_json, {'participants'})
+        participant_json_exclude = self.dict_exclude_keys(participant_json, {'perks', 'challenges', 'missions', 'bountyLevel'})
+
+        doc.update(match_info_json_exclude_participants)
+        doc.update(participant_json_exclude)
+        
+        # exclude = {'perks', 'challenges', 'missions', 'bountyLevel'}
+        # for k, v in participant_json.items():
+        #     if k not in exclude:
+        #         doc[k] = v
+        coll.insert_one(doc, session=session)
+
+    def update_participant_win_loss_stats(puuid):
+        pass
 
     def insert_match_no_commit(self, matchID: str, dataVersion: str, match_info_json: Dict[str, Any], session=None):
         coll = self.db['Match']
