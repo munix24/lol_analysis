@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 # Announce the configured root logging level so startup logs show it
 logger.info("Logging configured; root level=%s", logging.getLevelName(_level))
 
-# 5_421_000_000 for game V15.24
-# 5_458_500_000 for game V16.1
-MATCHID_THRESHOLD = 5_458_500_000       # only want V15.24 or V16.1 games
+MATCHID_THRESHOLD = 5_458_600_000       # only want V16.1 games
 
 # filter bad games, otherwise will use up resources querying later
 def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
@@ -41,8 +39,8 @@ def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
         if info.get('gameDuration', 0) <= min_duration:         # not earlySurrender
             logger.info('gameDuration <= %s', min_duration)
             return False
-        if not info.get('gameVersion', '').startswith(('15.24', '16.1')):
-            logger.info('gameVersion does not start with 15.24 or 16.1: %s', info.get('gameVersion', ''))
+        if not info.get('gameVersion', '').startswith(('16')):
+            logger.info('gameVersion does not start with 16: %s', info.get('gameVersion', ''))
             return False
         return True
     except Exception:
