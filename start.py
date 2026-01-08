@@ -24,27 +24,28 @@ logger = logging.getLogger(__name__)
 # Announce the configured root logging level so startup logs show it
 logger.info("Logging configured; root level=%s", logging.getLevelName(_level))
 
-MATCHID_THRESHOLD = 5_458_600_000       # only want V16.1 games
+GAME_VERSION_PREFIX = ('16',)            # only want V16.1 games.
+MATCHID_THRESHOLD = 5_458_700_000       # Should be as limiting as possible to reduce API calls
 
 # filter bad games, otherwise will use up resources querying later
 def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
     try:
         info = match_json.get('info', {})
-        if info.get('endOfGameResult') != 'GameComplete':       # skip ongoing games?
+        if info.get('endOfGameResult', '') != 'GameComplete':       # skip ongoing games?
             logger.info('endOfGameResult) != GameComplete')
             return False
-        if info.get('queueId') != queue_id:                     # only ranked solo
+        if info.get('queueId', 0) != queue_id:                     # only ranked solo
             logger.info('queueId != %s', queue_id)
             return False
         if info.get('gameDuration', 0) <= min_duration:         # not earlySurrender
             logger.info('gameDuration <= %s', min_duration)
             return False
-        if not info.get('gameVersion', '').startswith(('16')):
-            logger.info('gameVersion does not start with 16: %s', info.get('gameVersion', ''))
+        if not info.get('gameVersion', '').startswith(GAME_VERSION_PREFIX):
+            logger.info('gameVersion does not start with any of: %s', ', '.join(sorted(GAME_VERSION_PREFIX)))
             return False
         return True
-    except Exception:
-        return False
+    except Exception as e:
+        print("Error occured: ", e)
 
 def lookup_and_process_matches_only():
     try:
@@ -70,17 +71,17 @@ def lookup_and_process_matches_only():
         raise
 
 def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
-    logger.info('')
-    logger.info('puuid: %s', puuid)
+    logger.debug('puuid: %s', puuid)
 
     matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)             
     logger.info('total matchIDs for puuid above threshold: %s', len(matchIDs_list or []))
 
     matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       
     logger.info('new matchIDs not in table: %s', len(matchIDs_list or []))
+    logger.info('')
 
     for matchID in matchIDs_list:
-        logger.info('found matchID: %s', matchID)
+        logger.info('matchID above threshold: %s', matchID)
 
         match_json = API_match.get_match_API_json_by_matchID(matchID)
         if should_process_match(match_json):   
@@ -105,6 +106,7 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
                 DB_client.db.commit_transaction(session)
             finally:
                 DB_client.db.close_transaction(session)
+        logger.info('')
 
 def lookup_matches_and_leagues_v4_for_oldest_ranked_puuids(get_league_v4_API_json = False):
     try:
@@ -132,6 +134,7 @@ def process_oldest_match():
             for match in matches:
                 matchID = match['matchID']
                 logger.info('processing matchID: %s', matchID)
+                logger.info('')
 
                 for participant_json in match['participants']:
                     puuid = participant_json['puuid']
