@@ -20,6 +20,7 @@ import API_matches
 import API_match
 import DB_client
 import time
+import get_json_retry
 
 logger = logging.getLogger(__name__)
 # Announce the configured root logging level so startup logs show it
@@ -86,8 +87,8 @@ def lookup_and_process_matches_only():
 
 def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
     logger.debug('\tpuuid: %s', puuid)
-    
-    matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)             
+
+    matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)  
     logger.info('\ttotal matchIDs for puuid above threshold: %s', len(matchIDs_list or []))
 
     matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       
@@ -125,7 +126,8 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
             finally:
                 DB_client.db.close_transaction(session)
 
-    return inserted_count
+    API_reqs_count = len(matchIDs_list or []) + 1    # +1 for initial matches call if any      
+    return inserted_count, API_reqs_count
 
 def lookup_matches_and_leagues_v4_for_oldest_ranked_puuids(get_league_v4_API_json = False):
     try:
@@ -154,27 +156,30 @@ def process_oldest_match():
 
         while True:
             oldest_matches_json_list = DB_client.db.select_oldest_matches()
+            total_API_calls_for_match = 0
             for match_json in oldest_matches_json_list:
                 matchID = match_json['matchID']
-                logger.info('matchID: %s', matchID)
+                logger.info('matchID %s', matchID)
                 # Sum inserted matches for all participants of this match
                 match_inserted_total = 0
                 for participant_json in match_json.get('participants', []):
                     puuid = participant_json.get('puuid')
-                    inserted = get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False)
-                    logger.info('\tInserted matches for puuid: %d', inserted)
-                    match_inserted_total += int(inserted or 0)
+                    inserted_matches_count, API_reqs_count = get_filter_and_insert_puuid_matches(puuid, False)
+                    logger.info('\tInserted matches for puuid: %d', inserted_matches_count)
+                    match_inserted_total += int(inserted_matches_count or 0)
+                    total_API_calls_for_match += int(API_reqs_count or 0)
 
-                logger.info('Inserted matches for matchID: %d', match_inserted_total)
-
-                # Update running total
+                logger.info('Inserted %d matches in %d calls', match_inserted_total, total_API_calls_for_match)
+                
                 total_inserted_since_start += match_inserted_total
 
                 # Compute rate and elapsed string using helper
                 inserts_per_hour, elapsed_seconds = _compute_rate_and_elapsed(total_inserted_since_start, start_time)
-                logger.info('Inserted %d matches in %.0f sec, %.0f matches/hour',
-                            total_inserted_since_start, elapsed_seconds, inserts_per_hour)
+                logger.info('Inserted %d matches in %.0f sec total, %.0f matches/hour',
+                                total_inserted_since_start, elapsed_seconds, inserts_per_hour)
+                logger.info('')
 
+                # update leagueV4 with win / loss info
                 DB_client.db.update_MatchesUtc_match(matchID)
 
     except KeyboardInterrupt:

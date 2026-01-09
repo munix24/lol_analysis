@@ -46,7 +46,7 @@ class RateLimiter:
                     logger.info("Rate limit reached. Sleeping for %d seconds...", int(wait_time))
                     # include a summary of requests (total and last-hour) for observability.
                     logger.info(
-                        "Requests summary: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
+                        "APIs called: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
                         self._request_meter.total,
                         self._request_meter.count,
                         self._request_meter.seconds_since_first,
@@ -98,22 +98,14 @@ class RequestMeter:
 
     @property
     def seconds_since_first(self) -> float:
-        """Return seconds since this `RequestMeter` was created.
-
-        This uses the meter's initialization time so it measures how long the
-        meter has been active rather than the age of the oldest recorded
-        timestamp.
-        """
+        """Return seconds since this `RequestMeter` was created."""
         now = time.time()
         seconds = now - float(self._started_at)
         return float(seconds) if seconds >= 0.0 else 0.0
 
     @property
     def reqs_per_hour(self) -> float:
-        """Estimate average requests per hour since the meter was created.
-
-        Uses the meter's `seconds_since_first` property for elapsed time.
-        """
+        """Estimate average requests per hour since the meter was created."""
         total = self.total
         seconds = self.seconds_since_first
         if total <= 0:
@@ -174,3 +166,41 @@ def get_json_retry(url, max_attempts = 3):
             if retry < max_attempts-1:      
                 logger.warning("URLError: %s", e)
                 continue
+    
+
+def get_api_request_total() -> int:
+    """Return the cumulative total number of API requests recorded by the internal meter."""
+    try:
+        return int(_rate_limiter._request_meter.total)
+    except Exception:
+        return 0
+
+
+def get_api_requests_last_hour() -> int:
+    """Return the number of requests seen in the last rolling hour window."""
+    try:
+        return int(_rate_limiter._request_meter.count)
+    except Exception:
+        return 0
+
+
+def get_api_reqs_per_hour() -> float:
+    """Return the average requests per hour since the meter was created."""
+    try:
+        return float(_rate_limiter._request_meter.reqs_per_hour)
+    except Exception:
+        return 0.0
+
+
+def get_request_stats():
+    """Return a dict with request statistics: total, last_hour, seconds_since_first, reqs_per_hour."""
+    try:
+        rm = _rate_limiter._request_meter
+        return {
+            'total': int(rm.total),
+            'last_hour': int(rm.count),
+            'seconds_since_first': float(rm.seconds_since_first),
+            'reqs_per_hour': float(rm.reqs_per_hour),
+        }
+    except Exception:
+        return {'total': 0, 'last_hour': 0, 'seconds_since_first': 0.0, 'reqs_per_hour': 0.0}
