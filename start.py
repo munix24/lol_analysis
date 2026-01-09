@@ -169,7 +169,8 @@ def process_oldest_match():
                     match_inserted_total += int(inserted_matches_count or 0)
                     total_API_calls_for_match += int(API_reqs_count or 0)
 
-                logger.info('Inserted %d matches in %d calls', match_inserted_total, total_API_calls_for_match)
+                matches_per_call = match_inserted_total / total_API_calls_for_match
+                logger.info('Inserted %d matches in %d calls, %.02f matches per call', match_inserted_total, total_API_calls_for_match, matches_per_call)
                 
                 total_inserted_since_start += match_inserted_total
 
