@@ -110,9 +110,9 @@ class MongoDBClient:
         cursor = coll.find(query, {'puuid': 1, '_id': 0}) \
                      .sort([('updateMatchesUtc', 1), ('totalGames', -1)]) \
                      .limit(100)
-        doc_list = list(cursor)
+        # doc_list = list(cursor)
         # df = pd.DataFrame(doc_list)
-        return doc_list
+        return cursor
 
     def select_oldest_matches(self):
         coll = self.db['Match']

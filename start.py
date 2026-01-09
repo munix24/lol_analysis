@@ -28,20 +28,24 @@ GAME_VERSION_PREFIX = ('16',)            # only want V16.1 games.
 MATCHID_THRESHOLD = 5_458_750_000       # Should be as limiting as possible to reduce API calls
 
 # filter bad games, otherwise will use up resources querying later
-def should_process_match(match_json, queue_id=420, min_duration=500) -> bool:
+def should_insert_match(match_json, queue_id=420, min_duration=500) -> bool:
     try:
+        if not match_json:
+            logger.info('\tmatch_json not found')
+            return False
+        
         info = match_json.get('info', {})
         if info.get('endOfGameResult', '') != 'GameComplete':       # skip ongoing games?
-            logger.info('endOfGameResult) != GameComplete')
+            logger.info('\tendOfGameResult) != GameComplete')
             return False
         if info.get('queueId', 0) != queue_id:                     # only ranked solo
-            logger.info('queueId != %s', queue_id)
+            logger.info('\tqueueId != %s', queue_id)
             return False
         if info.get('gameDuration', 0) <= min_duration:         # not earlySurrender
-            logger.info('gameDuration <= %s', min_duration)
+            logger.info('\tgameDuration <= %s', min_duration)
             return False
         if not info.get('gameVersion', '').startswith(GAME_VERSION_PREFIX):
-            logger.info('gameVersion does not start with any of: %s', ', '.join(sorted(GAME_VERSION_PREFIX)))
+            logger.info('\tgameVersion does not start with any of: %s', ', '.join(sorted(GAME_VERSION_PREFIX)))
             return False
         return True
     except Exception as e:
@@ -81,10 +85,10 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
     logger.info('')
 
     for matchID in matchIDs_list:
-        logger.info('matchID above threshold: %s', matchID)
+        logger.info('\tmatchID above threshold: %s', matchID)
 
         match_json = API_match.get_match_API_json_by_matchID(matchID)
-        if should_process_match(match_json):   
+        if should_insert_match(match_json):   
             try:
                 # mongoDB randomly closing transaction? runtime limit?
                 # session = DB_client.db.begin_transaction()
@@ -101,7 +105,7 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
                 else:
                     pass
 
-                logger.info('Inserting matchID: %s', matchID)
+                logger.info('\tInserting matchID: %s', matchID)
                 DB_client.db.insert_match_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], None)
                 DB_client.db.commit_transaction(session)
             finally:
