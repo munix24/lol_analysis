@@ -2,6 +2,7 @@ import os
 import pandas as pd
 from get_env_var import get_env_var
 from typing import Any, Dict, List
+import perf_select_matches
 import time
 import ipaddress
 
@@ -25,8 +26,8 @@ class MongoDBClient:
                 self.client = pymongo.MongoClient(conn_str)
 
             self.db = self.client[db_database]
-            print("Connected to MongoDB server:", db_server_and_port)
-            print("Connected to MongoDB db_database:", db_database)
+            print("MongoDB server:", db_server_and_port)
+            # print("MongoDB db_database:", db_database)
         except Exception as e:
             print("Error connecting to database: " + str(e))
             raise
@@ -127,7 +128,7 @@ class MongoDBClient:
         # docs = list(cursor)
         return cursor
 
-    def update_MatchesUtc_match(self, matchID: str):
+    def update_match_updateMatchesUtc(self, matchID: str):
         coll = self.db['Match']
         now = pd.Timestamp.utcnow().to_pydatetime()
         coll.update_many({'matchID': matchID}, {'$set': {'updateMatchesUtc': now}})
@@ -160,7 +161,7 @@ class MongoDBClient:
             # Use $setOnInsert to preserve a createUtc only on insert
             coll.update_one(
                 filter_q, 
-                {'$set': update_fields, '$setOnInsert': {'createUtc': now, 'updateMatchesUtc': now}}, 
+                {'$set': update_fields, '$setOnInsert': {'createUtc': now}}, 
                 upsert=True,
                 session=session)
             
@@ -195,9 +196,6 @@ class MongoDBClient:
         #         doc[k] = v
         coll.insert_one(doc, session=session)
 
-    def update_participant_win_loss_stats(puuid):
-        pass
-
     def insert_match_no_commit(self, matchID: str, dataVersion: str, match_info_json: Dict[str, Any], session=None):
         coll = self.db['Match']
         doc = {'matchID': matchID, 'dataVersion': dataVersion}
@@ -221,61 +219,54 @@ class MongoDBClient:
         doc['updateMatchesUtc'] = pd.Timestamp.utcnow().to_pydatetime()
         coll.insert_one(doc, session=session)
 
-    def adhoc_league_v4_merge(self):
-        league_collection = self.db["LeagueV4"]
-        match_collection = self.db["Match"]
+    def update_participant_win_loss_totalGames(self, puuid, wins, losses, totalGames):
+        coll = self.db['LeagueV4']
+        now = pd.Timestamp.utcnow().to_pydatetime()
+        
+        filter_q = {'puuid': puuid}
+        update_fields = {'wins': wins, 'losses': losses, 'totalGames': totalGames, 'updateMatchesUtc': now}
+        
+        coll.update_one(
+            filter_q, 
+            {'$set': update_fields, '$setOnInsert': {'createUtc': now}}, 
+            upsert=True)
 
-        league_map = {doc["puuid"]: doc for doc in league_collection.find()}
-        bulk_ops = []
+    def increment_participant_win_loss(self, puuid, win_bool: bool):
+        """Increment wins or losses for `puuid` by 1 based on `win_bool`.
 
-        for match_doc in match_collection.find():
-            updated_participants = []
-            for participant in match_doc.get("participants", []):
-                puuid = participant.get("puuid")
-                league = league_map.get(puuid)
-                if league:
-                    participant["LeagueV4"] = league  # Embed leagueV4 data
-                updated_participants.append(participant)
-            # Prepare a bulk update operation
-            bulk_ops.append({
-                "filter": {"_id": match_doc["_id"]},
-                "update": {"$set": {"participants": updated_participants}}
-            })
-
-        # Bulk write to update all match documents
-        if bulk_ops:
-            result = match_collection.bulk_write([
-                pymongo.UpdateOne(op["filter"], op["update"])
-                for op in bulk_ops
-            ])
-            print("Modified count:", result.modified_count)
-
-    def select_all_matches(self) -> pd.DataFrame:
-        """Return all documents from the `Match` collection as a pandas DataFrame.
-
-        Note: reading an entire collection into memory can be large — consider
-        adding a `filter`, `projection` or `limit` parameters if you expect many
-        documents.
+        Reads current `wins`/`losses` values, computes new totals, and writes
+        them back. If the document doesn't exist it will be created with
+        `createUtc` set.
         """
-        coll = self.db['Match']
-        cursor = coll.find()
-        docs = list(cursor)
-        if not docs:
-            return pd.DataFrame()
-        df = pd.DataFrame(docs)
-        # Convert MongoDB ObjectId to string for easier display/usage
-        if '_id' in df.columns:
-            df['_id'] = df['_id'].apply(str)
-        return df
-    
-    def time_select_matches(self) -> float:
-        start = time.perf_counter()
-        df = self.select_all_matches()
-        elapsed = time.perf_counter() - start
+        try:
+            coll = self.db['LeagueV4']
+            now = pd.Timestamp.utcnow().to_pydatetime()
 
-        rows = df.shape[0] if hasattr(df, "shape") else (len(df) if hasattr(df, "__len__") else "unknown")
-        print(f"select_matches returned {rows} rows in {elapsed:.3f} s")
+            filter_q = {'puuid': puuid}
+            existing = coll.find_one(filter_q, {'wins': 1, 'losses': 1})
 
-        # optional: show a sample
-        if hasattr(df, "head"):
-            print(df.head())
+            existing_wins = int(existing.get('wins', 0)) if existing else 0
+            existing_losses = int(existing.get('losses', 0)) if existing else 0
+
+            if win_bool:
+                new_wins = existing_wins + 1
+                new_losses = existing_losses
+            else:
+                new_wins = existing_wins
+                new_losses = existing_losses + 1
+
+            totalGames = new_wins + new_losses
+
+            update_fields = {
+                'wins': new_wins,
+                'losses': new_losses,
+                'totalGames': totalGames
+            }
+
+            coll.update_one(filter_q, {'$set': update_fields, '$setOnInsert': {'createUtc': now, 'updateMatchesUtc': now}}, upsert=True)
+        except Exception:
+            try:
+                import logging
+                logging.getLogger(__name__).exception('Failed updating win/loss totals for puuid %s', puuid)
+            except Exception:
+                pass

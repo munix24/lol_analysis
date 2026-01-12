@@ -20,7 +20,6 @@ import API_matches
 import API_match
 import DB_client
 import time
-import get_json_retry
 
 logger = logging.getLogger(__name__)
 # Announce the configured root logging level so startup logs show it
@@ -52,7 +51,6 @@ def should_insert_match(match_json, queue_id=420, min_duration=500) -> bool:
         return True
     except Exception as e:
         print("Error occured: ", e)
-
 
 def _compute_rate_and_elapsed(total_inserted: int, start_time: float):
     """Return (inserts_per_hour, elapsed_str) for the supplied totals and start time."""
@@ -86,7 +84,7 @@ def lookup_and_process_matches_only():
         raise
 
 def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
-    logger.debug('\tpuuid: %s', puuid)
+    logger.info('\tpuuid: %s', puuid)
 
     matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)  
     logger.info('\ttotal matchIDs for puuid above threshold: %s', len(matchIDs_list or []))
@@ -114,8 +112,6 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
                                 if league_v4_json['queueType'] == 'RANKED_SOLO_5x5':
                                     DB_client.db.merge_league_v4_no_commit(league_v4_json, None)
                                     logger.info('processing puuid: %s', participant_json['puuid'])
-                else:
-                    pass
 
                 logger.debug('\t\tInserting matchID: %s', matchID)
                 DB_client.db.insert_match_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], None)
@@ -123,6 +119,10 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
                 
                 # Consider insertion successful if commit did not raise
                 inserted_count += 1
+
+                # increment win/loss puuids in the inserted match (if present)
+                for participant in match_json.get('info', {}).get('participants', []):
+                    DB_client.db.increment_participant_win_loss(participant.get('puuid'), participant.get('win') is True)
             finally:
                 DB_client.db.close_transaction(session)
 
@@ -140,13 +140,29 @@ def lookup_matches_and_leagues_v4_for_oldest_ranked_puuids(get_league_v4_API_jso
                 if get_league_v4_API_json:
                     leagues_v4_json = API_league_v4.get_league_v4_API_json_by_puuid(puuid)
                     DB_client.db.merge_league_v4(puuid, leagues_v4_json)
-                else:
-                    pass
     except KeyboardInterrupt:
         print("KeyboardInterrupt used. Shutting down...")
     except Exception as e:
         print("Error occured: ", e)
         raise
+
+def process_match_participants(match_doc):
+    """Process participants for a single match JSON.
+
+    Returns a tuple: (match_inserted_total, total_API_calls_for_match,
+    match_inserted_wins_total, match_inserted_losses_total)
+    """
+    match_inserted_total = 0
+    total_API_calls_for_match = 0
+
+    for participant_json in match_doc.get('participants', []):
+        puuid = participant_json.get('puuid')
+        inserted_matches_count, API_reqs_count = get_filter_and_insert_puuid_matches(puuid, False)
+        logger.info('\tInserted matches for puuid: %d', inserted_matches_count)
+        match_inserted_total += int(inserted_matches_count or 0)
+        total_API_calls_for_match += int(API_reqs_count or 0)
+
+    return (match_inserted_total, total_API_calls_for_match)
 
 def process_oldest_match():
     try:
@@ -155,33 +171,21 @@ def process_oldest_match():
         start_time = time.time()
 
         while True:
-            oldest_matches_json_list = DB_client.db.select_oldest_matches()
-            total_API_calls_for_match = 0
-            for match_json in oldest_matches_json_list:
-                matchID = match_json['matchID']
+            oldest_matches_doc_list = DB_client.db.select_oldest_matches()
+            for match_doc in oldest_matches_doc_list:
+                matchID = match_doc.get('matchID')
                 logger.info('matchID %s', matchID)
-                # Sum inserted matches for all participants of this match
-                match_inserted_total = 0
-                for participant_json in match_json.get('participants', []):
-                    puuid = participant_json.get('puuid')
-                    inserted_matches_count, API_reqs_count = get_filter_and_insert_puuid_matches(puuid, False)
-                    logger.info('\tInserted matches for puuid: %d', inserted_matches_count)
-                    match_inserted_total += int(inserted_matches_count or 0)
-                    total_API_calls_for_match += int(API_reqs_count or 0)
-
-                matches_per_call = match_inserted_total / total_API_calls_for_match
-                logger.info('Inserted %d matches in %d calls, %.02f matches per call', match_inserted_total, total_API_calls_for_match, matches_per_call)
                 
-                total_inserted_since_start += match_inserted_total
+                (match_inserted_total, total_api_calls_for_match) = process_match_participants(match_doc)
+                matches_per_call = match_inserted_total / total_api_calls_for_match if total_api_calls_for_match else 0
+                logger.info('Inserted %d matches in %d calls, %.02f mpc', match_inserted_total, total_api_calls_for_match, matches_per_call)
 
-                # Compute rate and elapsed string using helper
+                total_inserted_since_start += match_inserted_total
                 inserts_per_hour, elapsed_seconds = _compute_rate_and_elapsed(total_inserted_since_start, start_time)
-                logger.info('Inserted %d matches in %.0f sec total, %.0f matches/hour',
-                                total_inserted_since_start, elapsed_seconds, inserts_per_hour)
+                logger.info('Inserted %d matches in %.0f sec, %.0f mph', total_inserted_since_start, elapsed_seconds, inserts_per_hour)
                 logger.info('')
 
-                # update leagueV4 with win / loss info
-                DB_client.db.update_MatchesUtc_match(matchID)
+                DB_client.db.update_match_updateMatchesUtc(matchID)
 
     except KeyboardInterrupt:
         print("KeyboardInterrupt used. Shutting down...")

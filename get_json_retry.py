@@ -43,7 +43,7 @@ class RateLimiter:
                     continue
 
                 if wait_time > (self.rate_seconds / 3):     # log if waiting significant time
-                    logger.info("Rate limit reached. Sleeping for %d seconds...", int(wait_time))
+                    logger.info("API rate limit reached. Sleeping for %d seconds...", int(wait_time))
                     # include a summary of requests (total and last-hour) for observability.
                     logger.info(
                         "APIs called: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
@@ -128,14 +128,12 @@ class RequestMeter:
         except Exception:
             logger.exception("Failed to compute request stats")
 
-
 """Ensures we do not exceed MAX_API_REQUESTS per API_REQUESTS_RESET_SEC."""
 MAX_API_REQUESTS = 100
 API_REQUESTS_RESET_SEC = 120  # seconds
 _rate_limiter = RateLimiter(MAX_API_REQUESTS, API_REQUESTS_RESET_SEC)
 
-
-def get_json_retry(url, max_attempts = 3):
+def get_json_retry(url, max_attempts = 10):
     for retry in range(max_attempts):
         try:
             logger.debug("%s", url)
@@ -154,9 +152,34 @@ def get_json_retry(url, max_attempts = 3):
                     time.sleep(15)                          # wait until game starts
                     continue
             elif e.code == 429:                             # HTTP Error 429: Too Many Requests (api rate limit)
-                if retry < max_attempts-1:  
-                    logger.info("Err 429. Sleeping for %d seconds to reset...", int(API_REQUESTS_RESET_SEC // 2))
-                    time.sleep(API_REQUESTS_RESET_SEC // 2)     # wait half the time window for API limit reset
+                if retry < max_attempts-1:
+                    # Prefer honoring server-provided Retry-After header when present.
+                    retry_after = None
+                    try:
+                        # HTTPError behaves like a response; headers may be in .headers
+                        if hasattr(e, 'headers') and e.headers is not None:
+                            retry_after = e.headers.get('Retry-After')
+                        else:
+                            # fallback to info()/getheader if available
+                            try:
+                                retry_after = e.getheader('Retry-After')
+                            except Exception:
+                                retry_after = None
+                    except Exception:
+                        retry_after = None
+
+                    if retry_after:
+                        try:
+                            # Retry-After can be seconds or HTTP-date; try numeric first
+                            sleep_time = int(float(retry_after))
+                        except Exception:
+                            # Could be an HTTP-date or unparseable; fall back to heuristic
+                            sleep_time = int(API_REQUESTS_RESET_SEC // 8)
+                    else:
+                        sleep_time = int(API_REQUESTS_RESET_SEC // 8)
+
+                    logger.info("Err 429. Sleeping for %d seconds to reset... (Retry-After=%s)", sleep_time, str(retry_after))
+                    time.sleep(sleep_time)
                     continue
             elif e.code == 401:                             # 401: Unauthorized - invalid / expired API key
                 # logger.debug(url)                                # debug
@@ -167,14 +190,12 @@ def get_json_retry(url, max_attempts = 3):
                 logger.warning("URLError: %s", e)
                 continue
     
-
 def get_api_request_total() -> int:
     """Return the cumulative total number of API requests recorded by the internal meter."""
     try:
         return int(_rate_limiter._request_meter.total)
     except Exception:
         return 0
-
 
 def get_api_requests_last_hour() -> int:
     """Return the number of requests seen in the last rolling hour window."""
@@ -183,14 +204,12 @@ def get_api_requests_last_hour() -> int:
     except Exception:
         return 0
 
-
 def get_api_reqs_per_hour() -> float:
     """Return the average requests per hour since the meter was created."""
     try:
         return float(_rate_limiter._request_meter.reqs_per_hour)
     except Exception:
         return 0.0
-
 
 def get_request_stats():
     """Return a dict with request statistics: total, last_hour, seconds_since_first, reqs_per_hour."""
