@@ -212,8 +212,9 @@ class MongoDBClient:
                 if k not in match_exclude:
                     doc[k] = v
         
-        doc['createdUtc'] = pd.Timestamp.utcnow().to_pydatetime()
-        doc['updateMatchesUtc'] = pd.Timestamp.utcnow().to_pydatetime()
+        now = pd.Timestamp.utcnow().to_pydatetime()
+        doc['createdUtc'] = now
+        doc['updateMatchesUtc'] = now
         coll.insert_one(doc, session=session)
 
     def update_participant_win_loss(self, puuid, wins, losses):
