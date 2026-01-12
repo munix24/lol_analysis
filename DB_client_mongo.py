@@ -278,11 +278,10 @@ class MongoDBClient:
                 'wins': new_wins,
                 'losses': new_losses,
                 'totalGames': int(totalGames),
-                'winP': float(winP),
-                'updateUtc': now
+                'winP': float(winP)
             }
 
-            coll.update_one(filter_q, {'$set': update_fields, '$setOnInsert': {'createUtc': now}}, upsert=True)
+            coll.update_one(filter_q, {'$set': update_fields, '$setOnInsert': {'createUtc': now, 'updateUtc': now}}, upsert=True)
         except Exception:
             try:
                 import logging

@@ -158,6 +158,8 @@ def process_match_participants(match_doc):
     for participant_json in match_doc.get('participants', []):
         puuid = participant_json.get('puuid')
         inserted_matches_count, inserted_participant_count, API_reqs_count = get_filter_and_insert_puuid_matches(puuid, False)
+        DB_client.db.update_MatchesUtc_league_v4(puuid)
+        
         logger.info('\tInserted matches for puuid: %d', inserted_matches_count)
         # logger.info('\tInserted participants for puuid: %d', inserted_participant_count)
         match_inserted_total += int(inserted_matches_count or 0)
