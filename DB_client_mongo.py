@@ -2,9 +2,6 @@ import os
 import pandas as pd
 from get_env_var import get_env_var
 from typing import Any, Dict, List
-import perf_select_matches
-import time
-import ipaddress
 
 try:
     import pymongo

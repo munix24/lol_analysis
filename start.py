@@ -1,7 +1,6 @@
 ## job has to be repeatable and idempotent
 import os
 import logging
-from pathlib import Path
 
 # Configure logging from environment variables before importing application modules
 # - Else if LOG_LEVEL is set (e.g. INFO, WARNING), use that
