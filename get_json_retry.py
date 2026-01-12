@@ -45,15 +45,28 @@ class RateLimiter:
                 if wait_time > (self.rate_seconds / 3):     # log if waiting significant time
                     logger.info("API rate limit reached. Sleeping for %d seconds...", int(wait_time))
                     # include a summary of requests (total and last-hour) for observability.
-                    logger.info(
-                        "APIs called: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
-                        self._request_meter.total,
-                        self._request_meter.count,
-                        self._request_meter.seconds_since_first,
-                        self._request_meter.reqs_per_hour,
-                    )
+                    # Delegate to helper to centralize formatting and allow reuse.
+                    self.log_api_call_summary()
                 # Efficient wait: releases lock, reacquires on wake/timeout
                 self._cond.wait(timeout=wait_time)
+
+    def log_api_call_summary(self):
+        """Log the API call summary using the internal RequestMeter.
+
+        This method lives on the RateLimiter so it can directly access
+        `self._request_meter` and be overridden/mocked in tests.
+        """
+        try:
+            rm = self._request_meter
+            logger.info(
+                "APIs called: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
+                rm.total,
+                rm.count,
+                rm.seconds_since_first,
+                rm.reqs_per_hour,
+            )
+        except Exception:
+            logger.exception('Failed to log API call summary')
 
 class RequestMeter:
     """Counts requests within a rolling longer window (e.g. 1 hour).
@@ -128,6 +141,8 @@ class RequestMeter:
         except Exception:
             logger.exception("Failed to compute request stats")
 
+    # end of RequestMeter
+
 """Ensures we do not exceed MAX_API_REQUESTS per API_REQUESTS_RESET_SEC."""
 MAX_API_REQUESTS = 100
 API_REQUESTS_RESET_SEC = 120  # seconds
@@ -178,7 +193,8 @@ def get_json_retry(url, max_attempts = 10):
                     else:
                         sleep_time = int(API_REQUESTS_RESET_SEC // 8)
 
-                    logger.info("Err 429. Sleeping for %d seconds to reset... (Retry-After=%s)", sleep_time, str(retry_after))
+                    logger.info("Err 429. Sleeping for %d seconds... (Retry-After=%s)", sleep_time, str(retry_after))
+                    _rate_limiter.log_api_call_summary()
                     time.sleep(sleep_time)
                     continue
             elif e.code == 401:                             # 401: Unauthorized - invalid / expired API key
