@@ -182,9 +182,9 @@ def get_json_retry(url, max_attempts = 10):
                     time.sleep(sleep_time)
                     continue
             elif e.code == 401:                             # 401: Unauthorized - invalid / expired API key
-                # logger.debug(url)                                # debug
                 raise
-            raise       # raise for error code besides ones listed. ie: HTTP Error 401: Unauthorized - invalid / expired API key
+
+            # raise       # raise for error code besides ones listed. ie: HTTP Error 401: Unauthorized - invalid / expired API key
         except urllib.error.URLError as e:  
             if retry < max_attempts-1:      
                 logger.warning("URLError: %s", e)

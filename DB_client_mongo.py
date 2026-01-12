@@ -219,16 +219,34 @@ class MongoDBClient:
         doc['updateMatchesUtc'] = pd.Timestamp.utcnow().to_pydatetime()
         coll.insert_one(doc, session=session)
 
-    def update_participant_win_loss_totalGames(self, puuid, wins, losses, totalGames):
+    def update_participant_win_loss(self, puuid, wins, losses):
         coll = self.db['LeagueV4']
         now = pd.Timestamp.utcnow().to_pydatetime()
-        
+        # Ensure numeric values and compute totals/percentages
+        try:
+            wins = int(wins or 0)
+        except Exception:
+            wins = 0
+        try:
+            losses = int(losses or 0)
+        except Exception:
+            losses = 0
+
+        totalGames = wins + losses
+        winP = float(wins) / float(totalGames) if totalGames > 0 else 0
+
         filter_q = {'puuid': puuid}
-        update_fields = {'wins': wins, 'losses': losses, 'totalGames': totalGames, 'updateMatchesUtc': now}
-        
+        update_fields = {
+            'wins': wins,
+            'losses': losses,
+            'totalGames': int(totalGames),
+            'winP': float(winP),
+            'updateUtc': now
+        }
+
         coll.update_one(
-            filter_q, 
-            {'$set': update_fields, '$setOnInsert': {'createUtc': now}}, 
+            filter_q,
+            {'$set': update_fields, '$setOnInsert': {'createUtc': now}},
             upsert=True)
 
     def increment_participant_win_loss(self, puuid, win_bool: bool):
@@ -256,14 +274,17 @@ class MongoDBClient:
                 new_losses = existing_losses + 1
 
             totalGames = new_wins + new_losses
+            winP = float(new_wins) / float(totalGames) if totalGames > 0 else 0
 
             update_fields = {
                 'wins': new_wins,
                 'losses': new_losses,
-                'totalGames': totalGames
+                'totalGames': int(totalGames),
+                'winP': float(winP),
+                'updateUtc': now
             }
 
-            coll.update_one(filter_q, {'$set': update_fields, '$setOnInsert': {'createUtc': now, 'updateMatchesUtc': now}}, upsert=True)
+            coll.update_one(filter_q, {'$set': update_fields, '$setOnInsert': {'createUtc': now}}, upsert=True)
         except Exception:
             try:
                 import logging

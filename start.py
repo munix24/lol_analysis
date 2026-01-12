@@ -84,7 +84,7 @@ def lookup_and_process_matches_only():
         raise
 
 def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
-    logger.info('\tpuuid: %s', puuid)
+    logger.debug('\tpuuid: %s', puuid)
 
     matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)  
     logger.info('\ttotal matchIDs for puuid above threshold: %s', len(matchIDs_list or []))
@@ -92,7 +92,8 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
     matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       
     logger.info('\tnew matchIDs not in table: %s', len(matchIDs_list or []))
 
-    inserted_count = 0
+    inserted_match_count = 0
+    inserted_participant_count = 0
 
     for matchID in matchIDs_list:
         logger.debug('\t\tmatchID above threshold: %s', matchID)
@@ -117,17 +118,17 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
                 DB_client.db.insert_match_no_commit(matchID, match_json['metadata']['dataVersion'], match_json['info'], None)
                 DB_client.db.commit_transaction(session)
                 
-                # Consider insertion successful if commit did not raise
-                inserted_count += 1
+                inserted_match_count += 1
 
                 # increment win/loss puuids in the inserted match (if present)
                 for participant in match_json.get('info', {}).get('participants', []):
                     DB_client.db.increment_participant_win_loss(participant.get('puuid'), participant.get('win') is True)
+                    inserted_participant_count += 1
             finally:
                 DB_client.db.close_transaction(session)
 
     API_reqs_count = len(matchIDs_list or []) + 1    # +1 for initial matches call if any      
-    return inserted_count, API_reqs_count
+    return inserted_match_count, inserted_participant_count, API_reqs_count
 
 def lookup_matches_and_leagues_v4_for_oldest_ranked_puuids(get_league_v4_API_json = False):
     try:
@@ -157,8 +158,9 @@ def process_match_participants(match_doc):
 
     for participant_json in match_doc.get('participants', []):
         puuid = participant_json.get('puuid')
-        inserted_matches_count, API_reqs_count = get_filter_and_insert_puuid_matches(puuid, False)
+        inserted_matches_count, inserted_participant_count, API_reqs_count = get_filter_and_insert_puuid_matches(puuid, False)
         logger.info('\tInserted matches for puuid: %d', inserted_matches_count)
+        # logger.info('\tInserted participants for puuid: %d', inserted_participant_count)
         match_inserted_total += int(inserted_matches_count or 0)
         total_API_calls_for_match += int(API_reqs_count or 0)
 
