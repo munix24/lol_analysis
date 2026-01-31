@@ -86,7 +86,7 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
     logger.debug('\tpuuid: %s', puuid)
 
     matchIDs_list = API_matches.get_matches_API_json_by_puuid(puuid, MATCHID_THRESHOLD)  
-    logger.info('\ttotal matchIDs for puuid above threshold: %s', len(matchIDs_list or []))
+    logger.info('\ttotal matchIDs for puuid this season: %s', len(matchIDs_list or []))
 
     matchIDs_list = DB_client.db.select_matches_in_list_not_in_table(matchIDs_list)       
     logger.info('\tnew matchIDs not in table: %s', len(matchIDs_list or []))
@@ -95,7 +95,7 @@ def get_filter_and_insert_puuid_matches(puuid, get_league_v4_API_json = False):
     inserted_participant_count = 0
 
     for matchID in matchIDs_list:
-        logger.debug('\t\tmatchID above threshold: %s', matchID)
+        logger.debug('\t\tmatchID: %s', matchID)
 
         match_json = API_match.get_match_API_json_by_matchID(matchID)
         if should_insert_match(match_json):   
@@ -179,13 +179,21 @@ def process_oldest_match():
                 matchID = match_doc.get('matchID')
                 logger.info('matchID %s', matchID)
                 
+                start_time_match = time.time()
                 (match_inserted_total, total_api_calls_for_match) = process_match_participants(match_doc)
                 matches_per_call = match_inserted_total / total_api_calls_for_match if total_api_calls_for_match else 0
-                logger.info('Inserted %d matches in %d calls, %.02f mpc', match_inserted_total, total_api_calls_for_match, matches_per_call)
+                inserts_per_hour_match, elapsed_seconds_match = _compute_rate_and_elapsed(match_inserted_total, start_time_match)
+                logger.info('Processed match in %.0f sec with %d calls', elapsed_seconds_match, total_api_calls_for_match)
+                # logger.info('Inserted %d documents with %d calls, %.02f mpc', match_inserted_total, total_api_calls_for_match, matches_per_call)
 
                 total_inserted_since_start += match_inserted_total
                 inserts_per_hour, elapsed_seconds = _compute_rate_and_elapsed(total_inserted_since_start, start_time)
-                logger.info('Inserted %d matches in %.0f sec, %.0f mph', total_inserted_since_start, elapsed_seconds, inserts_per_hour)
+                api_calls_per_hour = (total_api_calls_since_start / (elapsed_seconds / 3600.0)) if elapsed_seconds > 0 else float(total_api_calls_since_start)
+
+                logger.info('Processed match %s in %.1f sec — %d API calls, %d inserts (%.2f inserts/call)',
+                            matchID, elapsed_seconds_match, total_api_calls_for_match, match_inserted_total, matches_per_call)
+                logger.info('Running totals: %d inserts, %d API calls; overall %.1f inserts/hour, %.1f API-calls/hour',
+                            total_inserted_since_start, total_api_calls_since_start, inserts_per_hour, api_calls_per_hour)
                 logger.info('')
 
                 DB_client.db.update_match_updateMatchesUtc(matchID)

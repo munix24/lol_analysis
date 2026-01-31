@@ -2,7 +2,6 @@ from get_api_key import get_api_key
 from get_json_retry import get_json_retry
 
 api_key = get_api_key()
-
 url_matches = "https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{}/ids?start={}&count={}&api_key={}"
 
 # Module-level constants used to determine whether a matchID is in the desired range

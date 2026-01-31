@@ -59,9 +59,9 @@ class RateLimiter:
         try:
             rm = self._request_meter
             logger.info(
-                "APIs called: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
-                rm.total,
+                "APIs called: %d (last_hour), %d total in %.0f seconds, rph=%.0f",
                 rm.count,
+                rm.total,
                 rm.seconds_since_first,
                 rm.reqs_per_hour,
             )
@@ -142,11 +142,26 @@ class RequestMeter:
             logger.exception("Failed to compute request stats")
 
     # end of RequestMeter
+                
+def _get_retry_after(err):
+    """Extract Retry-After header from an HTTPError-like object."""
+    try:
+        if hasattr(err, 'headers') and err.headers is not None:
+            return err.headers.get('Retry-After')
+        try:
+            return err.getheader('Retry-After')
+        except Exception:
+            return None
+    except Exception:
+        return None
 
 """Ensures we do not exceed MAX_API_REQUESTS per API_REQUESTS_RESET_SEC."""
 MAX_API_REQUESTS = 100
 API_REQUESTS_RESET_SEC = 120  # seconds
 _rate_limiter = RateLimiter(MAX_API_REQUESTS, API_REQUESTS_RESET_SEC)
+HEADERS={
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+}
 
 def get_json_retry(url, max_attempts = 10):
     for retry in range(max_attempts):
@@ -154,7 +169,8 @@ def get_json_retry(url, max_attempts = 10):
             logger.debug("%s", url)
             logger.debug("%d", len(_rate_limiter._request_timestamps))
             _rate_limiter.wait_for_slot()  # enforce rate limit before request
-            response = urllib.request.urlopen(url)
+            req = urllib.request.Request(url, headers=HEADERS)
+            response = urllib.request.urlopen(req)
             response_json = json.loads(response.read())
             return response_json                            # successful
         except urllib.error.HTTPError as e:    
@@ -169,20 +185,7 @@ def get_json_retry(url, max_attempts = 10):
             elif e.code == 429:                             # HTTP Error 429: Too Many Requests (api rate limit)
                 if retry < max_attempts-1:
                     # Prefer honoring server-provided Retry-After header when present.
-                    retry_after = None
-                    try:
-                        # HTTPError behaves like a response; headers may be in .headers
-                        if hasattr(e, 'headers') and e.headers is not None:
-                            retry_after = e.headers.get('Retry-After')
-                        else:
-                            # fallback to info()/getheader if available
-                            try:
-                                retry_after = e.getheader('Retry-After')
-                            except Exception:
-                                retry_after = None
-                    except Exception:
-                        retry_after = None
-
+                    retry_after = _get_retry_after(e)
                     if retry_after:
                         try:
                             # Retry-After can be seconds or HTTP-date; try numeric first
@@ -205,37 +208,3 @@ def get_json_retry(url, max_attempts = 10):
             if retry < max_attempts-1:      
                 logger.warning("URLError: %s", e)
                 continue
-    
-def get_api_request_total() -> int:
-    """Return the cumulative total number of API requests recorded by the internal meter."""
-    try:
-        return int(_rate_limiter._request_meter.total)
-    except Exception:
-        return 0
-
-def get_api_requests_last_hour() -> int:
-    """Return the number of requests seen in the last rolling hour window."""
-    try:
-        return int(_rate_limiter._request_meter.count)
-    except Exception:
-        return 0
-
-def get_api_reqs_per_hour() -> float:
-    """Return the average requests per hour since the meter was created."""
-    try:
-        return float(_rate_limiter._request_meter.reqs_per_hour)
-    except Exception:
-        return 0.0
-
-def get_request_stats():
-    """Return a dict with request statistics: total, last_hour, seconds_since_first, reqs_per_hour."""
-    try:
-        rm = _rate_limiter._request_meter
-        return {
-            'total': int(rm.total),
-            'last_hour': int(rm.count),
-            'seconds_since_first': float(rm.seconds_since_first),
-            'reqs_per_hour': float(rm.reqs_per_hour),
-        }
-    except Exception:
-        return {'total': 0, 'last_hour': 0, 'seconds_since_first': 0.0, 'reqs_per_hour': 0.0}
