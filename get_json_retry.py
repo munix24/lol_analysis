@@ -43,7 +43,7 @@ class RateLimiter:
                     continue
 
                 if wait_time > (self.rate_seconds / 8):     # log if waiting significant time
-                    logger.info("API rate limit reached. Waiting %d seconds for req reset...", int(wait_time))
+                    logger.info("Sleeping %d seconds for reset...", int(wait_time))
                     # include a summary of requests (total and last-hour) for observability.
                     # Delegate to helper to centralize formatting and allow reuse.
                     self.log_api_call_summary()
@@ -59,7 +59,7 @@ class RateLimiter:
         try:
             rm = self._request_meter
             logger.info(
-                "%d reqs (%d last hour) in %.0f seconds, rph=%.0f (%.0f max)",
+                "stats: %d reqs (%d last hour) in %.0f seconds, rph=%.0f (%.0f max)",
                 rm.total,
                 rm.req_count_in_window_seconds,
                 rm.seconds_since_first,
@@ -197,8 +197,10 @@ def get_json_retry(url, max_attempts = 10):
                     else:
                         sleep_time = int(API_REQUESTS_RESET_SEC // 8)
 
-                    logger.info("Err 429 Sleeping Retry-After=%s", str(retry_after))
-                    _rate_limiter.log_api_call_summary()
+                    logger.info("Err 429 Sleeping Retry-After = %s", str(retry_after))
+
+                    if sleep_time > (API_REQUESTS_RESET_SEC / 8):     # log if waiting significant time
+                        _rate_limiter.log_api_call_summary()
                     time.sleep(sleep_time)
                     continue
             elif e.code == 401:                             # 401: Unauthorized - invalid / expired API key
