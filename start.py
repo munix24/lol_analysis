@@ -185,8 +185,8 @@ def process_oldest_match():
                 matches_per_req = matches_inserted_total / API_reqs_total if API_reqs_total else 0
                 match_inserted_per_hour, match_elapsed_seconds = _compute_rate_and_elapsed(matches_inserted_total, match_processing_start_time)
 
-                logger.info('Processed %s in %.0f sec with %d matches, %d reqs, %.2f mpr',
-                            matchID, match_elapsed_seconds, matches_inserted_total, API_reqs_total, matches_per_req)
+                logger.info('Processed %s in %.0f sec', matchID, match_elapsed_seconds)
+                logger.info('inserted %d matches, %d reqs, %.2f mpr', matches_inserted_total, API_reqs_total, matches_per_req)
                 
                 matches_inserted_since_start += matches_inserted_total
                 API_reqs_since_start += int(API_reqs_total or 0)
@@ -194,8 +194,8 @@ def process_oldest_match():
                 matches_per_req_since_start = matches_inserted_since_start / API_reqs_since_start if API_reqs_since_start else 0
                 API_reqs_per_hour = (API_reqs_since_start / (elapsed_seconds / 3600.0)) if elapsed_seconds > 0 else float(API_reqs_since_start)
 
-                logger.info('Total: %.0f sec with %d matches, %d reqs, %.2f mpr',
-                            elapsed_seconds, matches_inserted_since_start, API_reqs_since_start, matches_per_req_since_start)
+                logger.info('total: %d matches, %d reqs, %.2f mpr',
+                            matches_inserted_since_start, API_reqs_since_start, matches_per_req_since_start)
                 logger.info('')
 
                 DB_client.db.update_match_updateMatchesUtc(matchID)

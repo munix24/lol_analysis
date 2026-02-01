@@ -43,7 +43,7 @@ class RateLimiter:
                     continue
 
                 if wait_time > (self.rate_seconds / 8):     # log if waiting significant time
-                    logger.info("Sleeping %d seconds for reset...", int(wait_time))
+                    logger.info("API rate limit reached. Sleeping for %d seconds...", int(wait_time))
                     # include a summary of requests (total and last-hour) for observability.
                     # Delegate to helper to centralize formatting and allow reuse.
                     self.log_api_call_summary()
@@ -58,14 +58,7 @@ class RateLimiter:
         """
         try:
             rm = self._request_meter
-            logger.info(
-                "stats: %d reqs (%d last hour) in %.0f seconds, rph=%.0f (%.0f max)",
-                rm.total,
-                rm.req_count_in_window_seconds,
-                rm.seconds_since_first,
-                rm.reqs_per_hour,
-                MAX_API_REQUESTS_PER_HOUR
-            )
+            rm.log_request_stats()
         except Exception:
             logger.exception('Failed to log API call summary')
 
@@ -95,7 +88,7 @@ class RequestMeter:
                 self._timestamps.popleft()
 
     @property
-    def req_count_in_window_seconds(self) -> int:
+    def req_count_last_hour(self) -> int:
         """Number of requests in the current rolling window (uses now())."""
         now = time.time()
         with self._lock:
@@ -132,11 +125,11 @@ class RequestMeter:
         """Log an info summary with total requests and requests in the last hour."""
         try:
             logger.info(
-                "Requests summary: total=%d, last_hour=%d, seconds_since_first=%.0f, reqs_per_hour=%.0f",
+                "API: %d reqs in %.0f seconds, rph=%.0f (%.0f max)",
                 self.total,
-                self.req_count_in_window_seconds,
                 self.seconds_since_first,
                 self.reqs_per_hour,
+                MAX_API_REQUESTS_PER_HOUR
             )
         except Exception:
             logger.exception("Failed to compute request stats")
@@ -197,7 +190,7 @@ def get_json_retry(url, max_attempts = 10):
                     else:
                         sleep_time = int(API_REQUESTS_RESET_SEC // 8)
 
-                    logger.info("Err 429 Sleeping Retry-After = %s", str(retry_after))
+                    logger.info("Error 429 Sleeping Retry-After %s seconds", str(retry_after))
 
                     if sleep_time > (API_REQUESTS_RESET_SEC / 8):     # log if waiting significant time
                         _rate_limiter.log_api_call_summary()
