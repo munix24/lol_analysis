@@ -24,8 +24,12 @@ logger = logging.getLogger(__name__)
 # Announce the configured root logging level so startup logs show it
 logger.info("Logging configured; root level=%s", logging.getLevelName(_level))
 
-GAME_VERSION_PREFIX = ('16.1', '16.2')            # only want V16.1 games.
+# 
+# GAME_VERSION_PREFIX = ('16')            # only want V16.1 games.
+# GAME_VERSION_PREFIX = ('16.1', '16.2')            # only want V16.1 games.
 MATCHID_THRESHOLD = 5_458_750_000       # Should be as limiting as possible to reduce API reqs
+
+# TODO: get skin from spectator.json instead of localhost
 
 # filter bad games, otherwise will use up resources querying later
 def should_insert_match(match_json, queue_id=420, min_duration=500) -> bool:
@@ -44,9 +48,9 @@ def should_insert_match(match_json, queue_id=420, min_duration=500) -> bool:
         if info.get('gameDuration', 0) <= min_duration:         # not earlySurrender
             logger.debug('\t\tgameDuration <= %s', min_duration)
             return False
-        if not info.get('gameVersion', '').startswith(GAME_VERSION_PREFIX):
-            logger.debug('\t\tgameVersion does not start with any of: %s', ', '.join(sorted(GAME_VERSION_PREFIX)))
-            return False
+        # if not info.get('gameVersion', '').startswith(GAME_VERSION_PREFIX):
+        #     logger.debug('\t\tgameVersion does not start with any of: %s', ', '.join(sorted(GAME_VERSION_PREFIX)))
+        #     return False
         return True
     except Exception as e:
         print("Error occured: ", e)
