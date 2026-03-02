@@ -133,8 +133,6 @@ class RequestMeter:
             )
         except Exception:
             logger.exception("Failed to compute request stats")
-
-    # end of RequestMeter
                 
 def _get_retry_after(err):
     """Extract Retry-After header from an HTTPError-like object."""
@@ -151,10 +149,11 @@ def _get_retry_after(err):
 """Ensures we do not exceed MAX_API_REQUESTS per API_REQUESTS_RESET_SEC."""
 MAX_API_REQUESTS = 100
 API_REQUESTS_RESET_SEC = 120  # 
-MAX_API_REQUESTS_PER_HOUR = (MAX_API_REQUESTS * 3600) / API_REQUESTS_RESET_SEC
+MAX_API_REQUESTS_PER_HOUR = (MAX_API_REQUESTS * 3600) / API_REQUESTS_RESET_SEC 
 _rate_limiter = RateLimiter(MAX_API_REQUESTS, API_REQUESTS_RESET_SEC)
 HEADERS={
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    # "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0"
 }
 
 def get_json_retry(url, max_attempts = 10):
@@ -182,11 +181,9 @@ def get_json_retry(url, max_attempts = 10):
                     retry_after = _get_retry_after(e)
                     if retry_after:
                         try:
-                            # Retry-After can be seconds or HTTP-date; try numeric first
-                            sleep_time = int(float(retry_after))
+                            sleep_time = int(float(retry_after))            # Retry-After can be seconds or HTTP-date; try numeric first
                         except Exception:
-                            # Could be an HTTP-date or unparseable; fall back to heuristic
-                            sleep_time = int(API_REQUESTS_RESET_SEC // 8)
+                            sleep_time = int(API_REQUESTS_RESET_SEC // 8)   # Could be an HTTP-date or unparseable; fall back to heuristic
                     else:
                         sleep_time = int(API_REQUESTS_RESET_SEC // 8)
 

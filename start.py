@@ -29,7 +29,7 @@ GAME_VERSION_PREFIX = ('16')            # only want V16.1 games.
 # GAME_VERSION_PREFIX = ('16.1', '16.2')            # only want V16.1 games.
 MATCHID_THRESHOLD = 5_458_750_000       # Should be as limiting as possible to reduce API reqs
 
-# TODO: get skin from spectator.json instead of localhost
+# TODO: get skin from spectator.json instead of localhost?
 
 # filter bad games, otherwise will use up resources querying later
 def should_insert_match(match_json, queue_id=420, min_duration=500) -> bool:
